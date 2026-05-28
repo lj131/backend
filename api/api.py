@@ -1,6 +1,8 @@
+from fastapi import FastAPI
+from pydantic import BaseModel
+
 import os
 from datetime import datetime
-
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -8,63 +10,48 @@ from funcation import memory, prompt
 from funcation import positive
 from funcation import userfile
 from funcation import utils
-from funcation import prompt
 
 load_dotenv()
 
-# DeepSeek客户端
+app = FastAPI()
+
 client = OpenAI(
     api_key=os.getenv("DEEPSEEK_API_KEY"),
     base_url="https://api.deepseek.com"
 )
 
-# 加载历史
-messages = memory.load_memory()
+class ChatRequest(BaseModel):
+    message: str
 
-# 加载角色好感度
-character = positive.load_character()
+@app.post("/chat")
+def chat(req: ChatRequest):
 
-# 加载用户文件
-profile = userfile.load_profile()
+    user_input = req.message
 
-# 如果第一次启动
-if not messages:
-    messages = []
+    messages = memory.load_memory()
 
-system_prompt = prompt.build_system_prompt(
-    character["favorability"]
-)
+    character = positive.load_character()
 
-messages.insert(0, {
-    "role": "system",
-    "content": system_prompt
-})
+    profile = userfile.load_profile()
 
-print()
+    if not messages:
+        messages = []
 
-minutes = utils.get_time_diff_minutes(
-    character["last_chat_time"]
-)
+    system_prompt = prompt.build_system_prompt(
+        character["favorability"]
+    )
 
-proactive_message = positive.get_proactive_message(
-    character["favorability"],
-    minutes
-)
+    if not messages or messages[0]["role"] != "system":
 
-print(f"林晚：{proactive_message}")
+        messages.insert(0, {
+            "role": "system",
+            "content": system_prompt
+        })
 
-caring_message = userfile.get_caring_message(profile)
-
-if caring_message:
-    print(f"林晚：{caring_message}")
-
-while True:
-
-    user_input = input("\n你：")
-
+    # 更新用户画像
     userfile.update_profile(user_input, profile)
 
-    # 好感度变化（简单规则）
+    # 好感度系统
     positive_words = [
         "喜欢",
         "爱你",
@@ -92,25 +79,16 @@ while True:
         if word in user_input:
             character["favorability"] -= 5
 
-    # 限制范围
     character["favorability"] = max(
         0,
         min(100, character["favorability"])
     )
 
-    # 保存状态
-    positive.save_character(character)
-
-    if user_input == "exit":
-        break
-
-    # 添加用户消息
     messages.append({
         "role": "user",
         "content": user_input
     })
 
-    # 调用模型
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=messages,
@@ -119,26 +97,18 @@ while True:
 
     ai_reply = response.choices[0].message.content
 
-    print(f"\n林晚：{ai_reply}")
-
-    # 保存AI回复
     messages.append({
         "role": "assistant",
         "content": ai_reply
     })
 
-    # memory管理
-    MAX_MEMORY = 2000
-
-    system_message = messages[0]
-
-    recent_messages = messages[-MAX_MEMORY:]
-
-    messages = [system_message] + recent_messages
-
     character["last_chat_time"] = datetime.now().isoformat()
 
     positive.save_character(character)
 
-    # 保存memory
     memory.save_memory(messages)
+
+    return {
+        "reply": ai_reply,
+        "favorability": character["favorability"]
+    }
