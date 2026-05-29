@@ -4,7 +4,7 @@ import random
 
 
 #好感度 文件
-CHARACTER_FILE = "character.json"
+CHARACTER_FILE = "linwan.json"
 
 
 

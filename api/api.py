@@ -11,6 +11,7 @@ from funcation import memory, prompt
 from funcation import positive
 from funcation import userfile
 from funcation import utils
+from funcation import character_manager
 
 load_dotenv()
 
@@ -30,6 +31,8 @@ client = OpenAI(
     base_url="https://api.deepseek.com"
 )
 
+
+
 class ChatRequest(BaseModel):
     message: str
 
@@ -42,9 +45,12 @@ def chat(req: ChatRequest):
 
     user_input = req.message
 
-    messages = memory.load_memory()
 
-    character = positive.load_character()
+    character = character_manager.load_current_character()
+
+    messages = memory.load_memory(
+        character["id"]
+    )
 
     profile = userfile.load_profile()
 
@@ -52,7 +58,7 @@ def chat(req: ChatRequest):
         messages = []
 
     system_prompt = prompt.build_system_prompt(
-        character["favorability"]
+        character["favorability"], character["id"]
     )
 
     if not messages or messages[0]["role"] != "system":
@@ -118,9 +124,12 @@ def chat(req: ChatRequest):
 
     character["last_chat_time"] = datetime.now().isoformat()
 
-    positive.save_character(character)
+    character_manager.save_current_character(character)
 
-    memory.save_memory(messages)
+    memory.save_memory(
+        character["id"],
+        messages
+    )
 
     return {
         "reply": ai_reply,
@@ -156,7 +165,11 @@ def save_profile(req: ChatRequest):
 #获取历史记录
 @app.get("/history")
 def history():
-    messages = memory.load_memory()
+    character = character_manager.load_current_character()
+
+    messages = memory.load_memory(
+        character["id"]
+    )
 
     return {
         "messages": messages[-10:]   # 取最后10条
@@ -165,12 +178,22 @@ def history():
 # 获取记忆
 @app.get("/memory")
 def get_memory():
-    messages = memory.load_memory()
+
+    # 当前角色
+    character = character_manager.load_current_character()
+
+    # 读取该角色记忆
+    messages = memory.load_memory(
+        character["id"]
+    )
+
     # 只提取用户消息
     user_messages = [
-        msg["content"] for msg in messages
+        msg["content"]
+        for msg in messages
         if msg["role"] == "user"
     ]
+
     return {
         "memory": user_messages
     }
@@ -178,16 +201,19 @@ def get_memory():
 # 清空记忆
 @app.post("/clear-memory")
 def clear_memory():
-    memory.save_memory([])
-    return {}
 
-# 获取历史消息
-@app.get("/messages")
-def messages():
-    messages = memory.load_memory()
+    character = character_manager.load_current_character()
+
+    memory.clear_memory(
+        character["id"]
+    )
+
     return {
-        "messages": messages
+        "message": "清空成功"
     }
+
+
+
 
 # 设置角色名字
 @app.post("/character/name")
@@ -206,3 +232,29 @@ def get_character_name():
     return {
         "name": character.get("name", "林晚")
     }
+
+@app.get("/characters")
+def get_characters():
+
+    return {
+        "characters":
+            character_manager.get_all_characters()
+    }
+
+
+class SwitchCharacterRequest(BaseModel):
+    character_id: str
+
+
+@app.post("/character/switch")
+def switch_character(req: SwitchCharacterRequest):
+
+    character_manager.set_current_character(
+        req.character_id
+    )
+
+    return {
+        "message": "切换成功"
+    }
+
+

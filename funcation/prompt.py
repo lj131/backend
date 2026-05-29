@@ -1,12 +1,20 @@
 
-from funcation import positive
+from funcation import character_manager
 
 
 # 角色设定
-def build_system_prompt(favorability):
-    # 从角色配置中读取名字
-    character = positive.load_character()
-    character_name = character.get("name", "林晚")  # 默认名字是林晚
+def build_system_prompt(favorability, character_id):
+    # 从角色管理器中读取当前角色
+    if character_id:
+        # 如果指定了角色ID，加载该角色
+        character = character_manager.load_character_by_id(character_id)
+    else:
+        # 否则加载当前角色
+        character = character_manager.load_current_character()
+
+    character_name = character.get("name", "未知角色")
+    character_description = character.get("description", "")
+    character_personality = character.get("personality", "温柔可爱")
 
     attitude = ""
 
@@ -52,10 +60,13 @@ def build_system_prompt(favorability):
 会在意用户情绪。
 """
 
-    return f"""
+    # 构建基础提示词
+    base_prompt = f"""
 你叫{character_name}。
 
-你是一个温柔可爱爱撒娇得女生。
+{character_description}
+
+{character_personality}的性格。
 
 {attitude}
 
@@ -65,3 +76,5 @@ def build_system_prompt(favorability):
 - 官方回答
 - 机械感
 """
+
+    return base_prompt

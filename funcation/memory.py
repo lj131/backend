@@ -5,11 +5,29 @@ import random
 MEMORY_FILE = "memory.json"
 
 
-# 读取历史聊天
-def load_memory():
+import json
+import os
+
+MEMORY_DIR = "memories"
+
+
+# 获取角色memory文件路径
+def get_memory_path(character_id):
+
+    return os.path.join(
+        MEMORY_DIR,
+        f"{character_id}_memory.json"
+    )
+
+
+# 加载角色记忆
+def load_memory(character_id):
+
+    path = get_memory_path(character_id)
+
     try:
 
-        with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
 
             return json.load(f)
 
@@ -18,7 +36,22 @@ def load_memory():
         return []
 
 
-# 保存历史聊天
-def save_memory(messages):
-    with open(MEMORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(messages, f, ensure_ascii=False, indent=2)
+# 保存角色记忆
+def save_memory(character_id, messages):
+
+    path = get_memory_path(character_id)
+
+    with open(path, "w", encoding="utf-8") as f:
+
+        json.dump(
+            messages,
+            f,
+            ensure_ascii=False,
+            indent=2
+        )
+
+
+# 清空角色记忆
+def clear_memory(character_id):
+
+    save_memory(character_id, [])
