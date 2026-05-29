@@ -55,7 +55,8 @@ def load_character():
     except:
 
         return {
-            "favorability": 50
+            "favorability": 50,
+            "name": "林晚"
         }
 
 # 保存角色状态

@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import os
@@ -15,6 +16,15 @@ load_dotenv()
 
 app = FastAPI()
 
+# 配置CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 允许所有来源，生产环境应该指定具体的域名
+    allow_credentials=True,
+    allow_methods=["*"],  # 允许所有HTTP方法
+    allow_headers=["*"],  # 允许所有请求头
+)
+
 client = OpenAI(
     api_key=os.getenv("DEEPSEEK_API_KEY"),
     base_url="https://api.deepseek.com"
@@ -23,6 +33,10 @@ client = OpenAI(
 class ChatRequest(BaseModel):
     message: str
 
+class CharacterNameRequest(BaseModel):
+    name: str
+
+# 聊天接口
 @app.post("/chat")
 def chat(req: ChatRequest):
 
@@ -111,4 +125,84 @@ def chat(req: ChatRequest):
     return {
         "reply": ai_reply,
         "favorability": character["favorability"]
+    }
+
+# 获取好感度
+@app.get("/favorability")
+def favorability():
+    character = positive.load_character()
+    return {
+        "favorability": character["favorability"]
+    }
+
+# 获取用户画像
+@app.get("/profile")
+def profile():
+    profile = userfile.load_profile()
+    return {
+        "profile": profile
+    }
+
+
+
+# 保存用户画像
+@app.post("/profile")
+def save_profile(req: ChatRequest):
+    userfile.save_profile(req.message)
+    return {
+        "message": "保存成功"
+    }
+
+#获取历史记录
+@app.get("/history")
+def history():
+    messages = memory.load_memory()
+
+    return {
+        "messages": messages[-10:]   # 取最后10条
+    }
+
+# 获取记忆
+@app.get("/memory")
+def get_memory():
+    messages = memory.load_memory()
+    # 只提取用户消息
+    user_messages = [
+        msg["content"] for msg in messages
+        if msg["role"] == "user"
+    ]
+    return {
+        "memory": user_messages
+    }
+
+# 清空记忆
+@app.post("/clear-memory")
+def clear_memory():
+    memory.save_memory([])
+    return {}
+
+# 获取历史消息
+@app.get("/messages")
+def messages():
+    messages = memory.load_memory()
+    return {
+        "messages": messages
+    }
+
+# 设置角色名字
+@app.post("/character/name")
+def set_character_name(req: CharacterNameRequest):
+    character = positive.load_character()
+    character["name"] = req.name
+    positive.save_character(character)
+    return {
+        "message": f"角色名字已设置为：{req.name}"
+    }
+
+# 获取角色名字
+@app.get("/character/name")
+def get_character_name():
+    character = positive.load_character()
+    return {
+        "name": character.get("name", "林晚")
     }

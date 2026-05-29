@@ -3,6 +3,10 @@
 
 # 角色设定
 def build_system_prompt(favorability):
+    # 从角色配置中读取名字
+    character = positive.load_character()
+    character_name = character.get("name", "林晚")  # 默认名字是林晚
+
     attitude = ""
 
     if favorability < 20:
@@ -48,7 +52,7 @@ def build_system_prompt(favorability):
 """
 
     return f"""
-你叫林晚。
+你叫{character_name}。
 
 你是一个温柔可爱爱撒娇得女生。
 
