@@ -2,16 +2,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import json
 import os
 from datetime import datetime
 from dotenv import load_dotenv
 from openai import OpenAI
 
 from funcation import memory, prompt
-from funcation import positive
-from funcation import userfile
 from funcation import utils
-from funcation import character_manager
+from funcation import memory_agent
+from funcation.memory_center import MemoryCenter
+from funcation import state_agent
+from funcation import event_agent
 
 load_dotenv()
 
@@ -20,10 +22,10 @@ app = FastAPI()
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有来源，生产环境应该指定具体的域名
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # 允许所有HTTP方法
-    allow_headers=["*"],  # 允许所有请求头
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 client = OpenAI(
@@ -31,13 +33,17 @@ client = OpenAI(
     base_url="https://api.deepseek.com"
 )
 
+# 数据中心单例
+mc = MemoryCenter()
 
 
 class ChatRequest(BaseModel):
     message: str
 
-class CharacterNameRequest(BaseModel):
-    name: str
+
+class SwitchCharacterRequest(BaseModel):
+    character_id: str
+
 
 # 聊天接口
 @app.post("/chat")
@@ -45,63 +51,68 @@ def chat(req: ChatRequest):
 
     user_input = req.message
 
+    # 当前角色
+    character = mc.load_current_character()
+    char_id = character["id"]
 
-    character = character_manager.load_current_character()
+    # 聊天历史（由 memory.py 管理，数据量大不适合放统一文件）
+    messages = memory.load_memory(char_id)
 
-    messages = memory.load_memory(
+    # 统一记忆数据（画像 + 好感度 + 长期记忆 + 事件 + 聊天摘要）
+    mem = mc.load_memory(char_id)
+
+    # 当前世界观
+    world = mc.load_current_world()
+
+    event_agent.check_daily_event(
+        mc,
+        character,
+        world
+    )
+
+    memory_data = mc.load_memory(
         character["id"]
     )
 
-    profile = userfile.load_profile()
-
-    if not messages:
-        messages = []
-
-    system_prompt = prompt.build_system_prompt(
-        character["favorability"], character["id"]
+    # 角色状态
+    current_state = (
+        memory_data.get(
+            "character_state",
+            {}
+        )
     )
 
-    if not messages or messages[0]["role"] != "system":
+    # 构建 Prompt
+    system_prompt = prompt.build_system_prompt(
+        character_id=char_id,
+        memory_data=mem,
+        world=world,
+        messages=messages
+    )
 
+    if messages and messages[0]["role"] == "system":
+        messages[0]["content"] = system_prompt
+    else:
         messages.insert(0, {
             "role": "system",
             "content": system_prompt
         })
 
     # 更新用户画像
-    userfile.update_profile(user_input, profile)
+    mc.update_profile(user_input, char_id)
 
-    # 好感度系统
-    positive_words = [
-        "喜欢",
-        "爱你",
-        "谢谢",
-        "可爱",
-        "陪我",
-        "想你"
-    ]
+    # 更新好感度
+    mc.update_favorability(user_input, char_id)
 
-    negative_words = [
-        "讨厌",
-        "滚",
-        "烦",
-        "傻",
-        "闭嘴"
-    ]
-
-    for word in positive_words:
-
-        if word in user_input:
-            character["favorability"] += 5
-
-    for word in negative_words:
-
-        if word in user_input:
-            character["favorability"] -= 5
-
-    character["favorability"] = max(
-        0,
-        min(100, character["favorability"])
+    new_state = (
+        state_agent.analyze_state(
+            user_input,
+            current_state
+        )
+    )
+    mc.update_character_state(
+        character["id"],
+        new_state
     )
 
     messages.append({
@@ -122,139 +133,148 @@ def chat(req: ChatRequest):
         "content": ai_reply
     })
 
-    character["last_chat_time"] = datetime.now().isoformat()
+    # 更新最后聊天时间
+    mc.update_last_chat_time(char_id)
 
-    character_manager.save_current_character(character)
+    # 保存聊天历史
+    memory.save_memory(char_id, messages)
 
-    memory.save_memory(
-        character["id"],
-        messages
-    )
+    # 长期记忆提取（AI agent）
+    current_memories = mc.get_long_memories_text(char_id)
+    memory_result = memory_agent.extract_memory(user_input, current_memories)
+
+    action = memory_result.get("action", "ignore")
+    if action == "add":
+        mc.add_long_memory(char_id, memory_result["memory"])
+    elif action == "update":
+        mc.update_long_memory(
+            char_id,
+            memory_result.get("old_memory", ""),
+            memory_result.get("new_memory", "")
+        )
 
     return {
         "reply": ai_reply,
-        "favorability": character["favorability"]
+        "favorability": mc.get_favorability(char_id)
     }
+
 
 # 获取好感度
 @app.get("/favorability")
 def favorability():
-    character = positive.load_character()
+    char_id = mc.get_current_character_id()
     return {
-        "favorability": character["favorability"]
+        "favorability": mc.get_favorability(char_id)
     }
+
 
 # 获取用户画像
 @app.get("/profile")
 def profile():
-    profile = userfile.load_profile()
+    char_id = mc.get_current_character_id()
     return {
-        "profile": profile
+        "profile": mc.get_profile(char_id)
     }
-
 
 
 # 保存用户画像
 @app.post("/profile")
 def save_profile(req: ChatRequest):
-    userfile.save_profile(req.message)
+    char_id = mc.get_current_character_id()
+    try:
+        profile = json.loads(req.message)
+        mem = mc.load_memory(char_id)
+        mem["profile"] = profile
+        mc.save_memory(char_id, mem)
+    except:
+        pass
     return {
         "message": "保存成功"
     }
 
-#获取历史记录
+
+# 获取历史记录
 @app.get("/history")
 def history():
-    character = character_manager.load_current_character()
-
-    messages = memory.load_memory(
-        character["id"]
-    )
-
+    character = mc.load_current_character()
+    messages = memory.load_memory(character["id"])
     return {
-        "messages": messages[-10:]   # 取最后10条
+        "messages": messages[-10:]
     }
+
 
 # 获取记忆
 @app.get("/memory")
 def get_memory():
-
-    # 当前角色
-    character = character_manager.load_current_character()
-
-    # 读取该角色记忆
-    messages = memory.load_memory(
-        character["id"]
-    )
-
-    # 只提取用户消息
+    character = mc.load_current_character()
+    messages = memory.load_memory(character["id"])
     user_messages = [
         msg["content"]
         for msg in messages
         if msg["role"] == "user"
     ]
-
     return {
         "memory": user_messages
     }
 
+
 # 清空记忆
 @app.post("/clear-memory")
 def clear_memory():
-
-    character = character_manager.load_current_character()
-
-    memory.clear_memory(
-        character["id"]
-    )
-
+    character = mc.load_current_character()
+    memory.clear_memory(character["id"])
     return {
         "message": "清空成功"
     }
 
 
-
-
-# 设置角色名字
-@app.post("/character/name")
-def set_character_name(req: CharacterNameRequest):
-    character = positive.load_character()
-    character["name"] = req.name
-    positive.save_character(character)
-    return {
-        "message": f"角色名字已设置为：{req.name}"
-    }
-
-# 获取角色名字
-@app.get("/character/name")
-def get_character_name():
-    character = positive.load_character()
-    return {
-        "name": character.get("name", "林晚")
-    }
-
+# 获取角色列表
 @app.get("/characters")
 def get_characters():
-
     return {
-        "characters":
-            character_manager.get_all_characters()
+        "characters": mc.get_all_characters()
     }
 
 
-class SwitchCharacterRequest(BaseModel):
-    character_id: str
-
-
+# 切换角色
 @app.post("/character/switch")
 def switch_character(req: SwitchCharacterRequest):
-
-    character_manager.set_current_character(
-        req.character_id
-    )
-
+    mc.set_current_character(req.character_id)
     return {
         "message": "切换成功"
     }
 
 
+# 获取世界列表
+@app.get("/worlds")
+def get_worlds():
+    return {
+        "worlds": mc.get_all_worlds()
+    }
+
+
+# 切换世界
+@app.post("/world/switch")
+def switch_world(req: SwitchCharacterRequest):
+    mc.set_current_world(req.character_id)
+    return {
+        "message": "切换成功"
+    }
+
+
+# 获取长期记忆
+@app.get("/long-memory")
+def get_long_memory():
+    char_id = mc.get_current_character_id()
+    return {
+        "long_memory": mc.get_long_memories(char_id)
+    }
+
+
+# 获取事件
+@app.get("/events")
+def get_events():
+    char_id = mc.get_current_character_id()
+    return {
+        "events": mc.get_events(char_id)
+    }
