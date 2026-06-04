@@ -3,9 +3,12 @@
     "name": "",
     "city": "上海",
     "job": "Java开发",
-    "mood": "",
+    "mood": "平静",
     "recent_topics": [
-      "你好，我在上海做Java开发"
+      "你好，我在上海做Java开发",
+      "你好",
+      "你怎么知道我在找这本书",
+      "直接问你不好吗"
     ]
   },
   "favorability": 50,
@@ -21,11 +24,11 @@
   "chat_summary": [],
   "relationship": {
     "level": "朋友",
-    "last_reason": "普通聊天，介绍自己的职业和地点，无情感倾向。"
+    "last_reason": "普通聊天，无情感倾向"
   },
   "character_state": {
     "mood": "平静",
-    "energy": 80,
+    "energy": 75,
     "current_event": ""
   },
   "story": {
@@ -43,5 +46,5 @@
     ],
     "last_update_date": "2026-06-04"
   },
-  "last_chat_time": "2026-06-04T16:34:35.509084"
+  "last_chat_time": "2026-06-04T17:56:15.994418"
 }
