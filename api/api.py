@@ -1,20 +1,21 @@
-import json
-import os
-
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from openai import OpenAI
 from pydantic import BaseModel
 
-from funcation import event_agent
+import json
+import os
+from datetime import datetime
+from dotenv import load_dotenv
+from openai import OpenAI
+
 from funcation import memory, prompt
+from funcation import utils
 from funcation import memory_agent
-from funcation import relationship_agent
-from funcation import state_agent
-from funcation import story_agent
 from funcation.memory_center import MemoryCenter
-from funcation.proactive import proactive_engine
+from funcation import state_agent
+from funcation import event_agent
+from funcation import story_agent
+from funcation import relationship_agent
 
 load_dotenv()
 
@@ -49,6 +50,7 @@ class SwitchCharacterRequest(BaseModel):
 # 聊天接口
 @app.post("/chat")
 def chat(req: ChatRequest):
+
     user_input = req.message
 
     # 当前角色
@@ -60,6 +62,7 @@ def chat(req: ChatRequest):
 
     # 统一记忆数据（画像 + 好感度 + 长期记忆 + 事件 + 聊天摘要）
     mem = mc.load_memory(char_id)
+
 
     # 当前世界观
     world = mc.load_current_world()
@@ -126,6 +129,7 @@ def chat(req: ChatRequest):
         character["id"],
         user_input
     )
+
 
     new_state = (
         state_agent.analyze_state(
@@ -513,27 +517,4 @@ def get_current_world():
     world = mc.load_current_world()
     return {
         "world": world
-    }
-
-
-# ============================================================
-# 主动问候
-# ============================================================
-@app.get("/proactive")
-def proactive():
-    character = mc.load_current_character()
-
-    world = mc.load_current_world()
-
-    message = proactive_engine.run(
-
-        mc,
-
-        character,
-
-        world
-    )
-
-    return {
-        "message": message
     }

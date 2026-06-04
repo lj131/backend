@@ -77,17 +77,6 @@ def create_default_memory():
 
             "last_active_time": ""
         },
-        "proactive": {
-
-            "last_time": "",
-
-            "last_message": "",
-            "today_count": 0,
-
-            "last_trigger": "",
-
-            "cooldown_hours": 6
-        },
         "story": {
             "story_id": "",
             "title": "",
@@ -277,14 +266,6 @@ class MemoryCenter:
     def update_character_state(self, character_id, state):
         """更新角色状态"""
         mem = self.load_memory(character_id)
-        old_state = mem.get("character_state", {})
-        old_mood = old_state.get("mood", "")
-        new_mood = state.get("mood", "")
-
-        # 心情变化标记
-        if new_mood and new_mood != old_mood:
-            state["mood_changed"] = True
-
         mem["character_state"] = state
         self.save_memory(character_id, mem)
 
@@ -457,81 +438,12 @@ class MemoryCenter:
     # ========== 主动消息 ==========
 
     def get_proactive_message(self, character_id):
-        """
-        根据状态变化标记生成主动消息。
-        优先检查 story/relationship/mood 变更标记，
-        有变更时用 proactive_agent 生成上下文相关消息并清除标记；
-        无变更时回退到基于好感度和时间的随机消息。
-        """
+        """根据好感度和离上次聊天的时间，生成角色主动消息"""
         mem = self.load_memory(character_id)
-
-        # ── 检查变更标记 ──
-        story = mem.get("story", {})
-        rel = mem.get("relationship", {})
-        state = mem.get("character_state", {})
-
-        story_changed = story.get("changed", False)
-        level_changed = rel.get("level_changed", False)
-        mood_changed = state.get("mood_changed", False)
-
-        has_change = story_changed or level_changed or mood_changed
-
-        if has_change:
-            from funcation import proactive_agent
-
-            # 加载角色信息
-            try:
-                character = self.load_character_by_id(character_id)
-                char_name = character.get("name", "角色")
-                char_personality = character.get("personality", "")
-            except:
-                char_name = "角色"
-                char_personality = ""
-
-            # 提取剧情上下文
-            story_title = story.get("title", "")
-            stages = story.get("stages", [])
-            stage_idx = story.get("stage", 0)
-            current_stage = stages[stage_idx] if 0 <= stage_idx < len(stages) else ""
-
-            msg = proactive_agent.generate_proactive_message(
-                character_name=char_name,
-                character_personality=char_personality,
-                story_changed=story_changed,
-                story_title=story_title,
-                current_stage_text=current_stage,
-                level_changed=level_changed,
-                new_level=rel.get("level", ""),
-                level_reason=rel.get("last_reason", ""),
-                mood_changed=mood_changed,
-                new_mood=state.get("mood", ""),
-            )
-
-            # 清除已消费的标记
-            changed = False
-            if story_changed:
-                story.pop("changed", None)
-                mem["story"] = story
-                changed = True
-            if level_changed:
-                rel.pop("level_changed", None)
-                mem["relationship"] = rel
-                changed = True
-            if mood_changed:
-                state.pop("mood_changed", None)
-                mem["character_state"] = state
-                changed = True
-
-            if changed:
-                self.save_memory(character_id, mem)
-
-            if msg:
-                return msg
-
-        # ── 回退：基于好感度和时间的随机消息 ──
         favorability = mem.get("favorability", 50)
         last_time = mem.get("last_chat_time")
 
+        # 计算时间差
         minutes = 0
         if last_time:
             try:
@@ -544,20 +456,20 @@ class MemoryCenter:
         low_messages = [
             "哦，又来了。",
             "今天居然还在。",
-            "……有事？",
+            "……有事？"
         ]
 
         normal_messages = [
             "你来了。",
             "今天怎么样？",
-            "在忙吗？",
+            "在忙吗？"
         ]
 
         high_messages = [
             "终于来了。",
             "我刚刚还在想你。",
             "今天过得怎么样？",
-            "怎么现在才来。",
+            "怎么现在才来。"
         ]
 
         if minutes > 30:
@@ -569,6 +481,7 @@ class MemoryCenter:
             return random.choice(normal_messages)
         else:
             return random.choice(high_messages)
+
 
 # ========== 角色状态 ==========
 

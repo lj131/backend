@@ -225,8 +225,6 @@ def check_story(
         if story is None:
             return  # 生成失败，跳过
 
-        story["changed"] = True  # 新剧情标记
-
     else:
 
         # 推进剧情
@@ -241,12 +239,10 @@ def check_story(
             )
             if new_story:
                 story = new_story
-                story["changed"] = True  # 新剧情标记
 
         else:
 
             story["stage"] += 1
-            story["changed"] = True  # 剧情推进标记
 
     story["last_update_date"] = today
 

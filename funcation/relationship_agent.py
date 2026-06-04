@@ -188,8 +188,6 @@ def update_relationship(
     # 关系升级事件
     if old_level != new_level:
 
-        memory_data["relationship"]["level_changed"] = True
-
         memory_data.setdefault(
             "events",
             []
