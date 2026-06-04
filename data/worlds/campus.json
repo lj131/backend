@@ -1,0 +1,11 @@
+{
+  "id": "campus",
+  "name": "校园",
+  "description": "大学校园日常恋爱",
+  "background": "你和AI角色在大学校园认识。这里有课堂、社团、图书馆。整体氛围青春轻松。",
+   "world_event": {
+    "title": "期末考试周",
+
+    "impact": -20
+  }
+}

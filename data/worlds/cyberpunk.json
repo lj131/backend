@@ -1,0 +1,11 @@
+{
+  "id": "cyberpunk",
+  "name": "赛博朋克",
+  "description": "霓虹灯、AI、黑客、资本控制的未来世界",
+  "background": "现在是2099年。世界被巨型企业控制。贫民区混乱。AI人格合法化。网络黑客横行。",
+  "world_event": {
+    "title": "企业战争",
+
+    "impact": -40
+  }
+}
