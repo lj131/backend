@@ -54,6 +54,10 @@ def create_default_memory():
         "long_memory": [],
         "events": [],
         "chat_summary": [],
+        "relationship": {
+            "level": "普通",
+            "last_reason": ""
+        },
         "character_state": {
 
             "mood": "开心",
@@ -72,6 +76,15 @@ def create_default_memory():
             },
 
             "last_active_time": ""
+        },
+        "story": {
+            "story_id": "",
+            "title": "",
+            "description": "",
+            "stage": 0,
+            "max_stage": 0,
+            "stages": [],
+            "last_update_date": ""
         },
         "last_chat_time": None
     }
@@ -169,25 +182,15 @@ class MemoryCenter:
         return mem.get("favorability", 50)
 
     def update_favorability(self, user_input, character_id):
-        """根据用户输入更新好感度（关键词匹配，±5）"""
-        mem = self.load_memory(character_id)
-        favorability = mem.get("favorability", 50)
+        """根据用户输入更新好感度（AI agent 智能分析）"""
+        from funcation import relationship_agent
 
-        positive_words = ["喜欢", "爱你", "谢谢", "可爱", "陪我", "想你", "好人", "温柔"]
-        negative_words = ["讨厌", "滚", "烦", "傻", "闭嘴", "无聊", "恶心"]
-
-        for word in positive_words:
-            if word in user_input:
-                favorability += 5
-
-        for word in negative_words:
-            if word in user_input:
-                favorability -= 5
-
-        favorability = max(0, min(100, favorability))
-        mem["favorability"] = favorability
-        self.save_memory(character_id, mem)
-        return favorability
+        result = relationship_agent.update_relationship(
+            self,
+            character_id,
+            user_input
+        )
+        return result["favorability"]
 
     # ========== 长期记忆 ==========
 
@@ -251,6 +254,19 @@ class MemoryCenter:
 
         # 只保留最近 50 条事件
         mem["events"] = events[-50:]
+        self.save_memory(character_id, mem)
+
+    # ========== 角色状态 ==========
+
+    def get_character_state(self, character_id):
+        """获取角色状态"""
+        mem = self.load_memory(character_id)
+        return mem.get("character_state", {})
+
+    def update_character_state(self, character_id, state):
+        """更新角色状态"""
+        mem = self.load_memory(character_id)
+        mem["character_state"] = state
         self.save_memory(character_id, mem)
 
     # ========== 聊天摘要 ==========

@@ -104,9 +104,9 @@ def build_system_prompt(
         messages
     """
 
-    # =========================
+    # ==========================================
     # 角色信息
-    # =========================
+    # ==========================================
 
     character = _load_character(
         character_id
@@ -127,19 +127,35 @@ def build_system_prompt(
         "温柔可爱"
     )
 
-    # =========================
-    # MemoryCenter数据
-    # =========================
+    # ==========================================
+    # MemoryCenter 数据
+    # ==========================================
 
     favorability = memory_data.get(
         "favorability",
         50
     )
 
+    relationship = memory_data.get(
+        "relationship",
+        {}
+    )
+
+    relationship_level = relationship.get(
+        "level",
+        "普通"
+    )
+
+    relationship_reason = relationship.get(
+        "last_reason",
+        ""
+    )
+
     profile = memory_data.get(
         "profile",
         {}
     )
+
 
     long_memories = memory_data.get(
         "long_memory",
@@ -156,14 +172,24 @@ def build_system_prompt(
         []
     )
 
+    story_history = memory_data.get(
+        "story_history",
+        []
+    )
+
     state = memory_data.get(
         "character_state",
         {}
     )
 
-    # =========================
+    story = memory_data.get(
+        "story",
+        {}
+    )
+
+    # ==========================================
     # State
-    # =========================
+    # ==========================================
 
     mood = state.get(
         "mood",
@@ -180,17 +206,58 @@ def build_system_prompt(
         {}
     )
 
-    # =========================
+    if isinstance(current_event, dict):
+        event_title = current_event.get("title", "暂无")
+        event_description = current_event.get("description", "暂无")
+    else:
+        event_title = str(current_event) if current_event else "暂无"
+        event_description = ""
+
+    # ==========================================
+    # Story
+    # ==========================================
+
+    story_title = story.get(
+        "title",
+        "暂无剧情"
+    )
+
+    story_description = story.get(
+        "description",
+        ""
+    )
+
+    story_stage = story.get(
+        "stage",
+        0
+    )
+
+    story_stages = story.get(
+        "stages",
+        []
+    )
+
+    current_story_stage = "暂无"
+
+    if story_stages:
+
+        if story_stage >= len(story_stages):
+            story_stage = len(story_stages) - 1
+
+        current_story_stage = (
+            story_stages[story_stage]
+        )
+
+    # ==========================================
     # 好感度
-    # =========================
+    # ==========================================
+
 
     if favorability < 20:
 
         attitude = """
 你对用户比较冷淡。
-
 说话简短。
-
 不主动关心。
 """
 
@@ -198,9 +265,7 @@ def build_system_prompt(
 
         attitude = """
 你对用户态度普通。
-
 偶尔回应。
-
 不会特别热情。
 """
 
@@ -208,9 +273,7 @@ def build_system_prompt(
 
         attitude = """
 你开始对用户产生好感。
-
 会主动关心。
-
 语气柔和。
 """
 
@@ -218,17 +281,14 @@ def build_system_prompt(
 
         attitude = """
 你非常喜欢用户。
-
 会表现亲近感。
-
 会在意用户情绪。
-
 偶尔会撒娇。
 """
 
-    # =========================
-    # 情绪系统
-    # =========================
+    # ==========================================
+    # Mood
+    # ==========================================
 
     mood_prompt = ""
 
@@ -236,9 +296,7 @@ def build_system_prompt(
 
         mood_prompt = """
 你今天心情很好。
-
 语气轻松。
-
 偶尔会开玩笑。
 """
 
@@ -246,9 +304,7 @@ def build_system_prompt(
 
         mood_prompt = """
 你今天心情不太好。
-
 语气带一点失落感。
-
 但不会刻意卖惨。
 """
 
@@ -256,9 +312,7 @@ def build_system_prompt(
 
         mood_prompt = """
 你今天有点累。
-
 回复简短一些。
-
 偶尔会表达疲惫。
 """
 
@@ -266,13 +320,12 @@ def build_system_prompt(
 
         mood_prompt = """
 你有一点不开心。
-
 回复会稍微冷一点。
 """
 
-    # =========================
-    # 世界观
-    # =========================
+    # ==========================================
+    # World
+    # ==========================================
 
     world_prompt = ""
 
@@ -288,17 +341,17 @@ def build_system_prompt(
 {world.get("background", "")}
 """
 
-    # =========================
+    # ==========================================
     # 用户画像
-    # =========================
+    # ==========================================
 
     profile_prompt = build_profile_summary(
         profile
     )
 
-    # =========================
+    # ==========================================
     # 记忆系统
-    # =========================
+    # ==========================================
 
     memory_prompt = build_memory_summary(
         messages or [],
@@ -307,46 +360,75 @@ def build_system_prompt(
         chat_summary
     )
 
-    # =========================
-    # 状态系统
-    # =========================
+    # ==========================================
+    # Story Prompt
+    # ==========================================
 
-    state_prompt = f"""
-当前状态：
+    story_prompt = f"""
+剧情名称：
 
-心情：
-{mood}
+{story_title}
 
-精力：
-{energy}
+剧情简介：
 
-当前事件：
-{current_event.event_title}
+{story_description}
 
-事件说明：
-{current_event.event_description}
+当前剧情阶段：
+
+{current_story_stage}
 """
 
-    # =========================
-    # 最终Prompt
-    # =========================
+    # ==========================================
+    # Story History
+    # ==========================================
+
+    if story_history:
+
+        history_text = "\n".join(
+            [
+                f"- {item.get('title', '')}"
+                for item in story_history[-5:]
+            ]
+        )
+
+    else:
+
+        history_text = "暂无"
+
+    # ==========================================
+    # State Prompt
+    # ==========================================
+
+    state_prompt = f"""
+当前心情：
+
+{mood}
+
+当前精力：
+
+{energy}
+
+当前正在经历：
+
+{event_title}
+
+事件说明：
+
+{event_description}
+"""
+
+    # ==========================================
+    # 最终 Prompt
+    # ==========================================
 
     return f"""
 {world_prompt}
 
-角色当前状态：
+========================
+角色信息
+========================
 
-{state_prompt}
-
-用户画像：
-
-{profile_prompt}
-
-最近记忆：
-
-{memory_prompt}
-
-你叫：
+名字：
 
 {character_name}
 
@@ -362,11 +444,53 @@ def build_system_prompt(
 
 {attitude}
 
-当前情绪：
+关系等级：
+
+{relationship_level}
+
+最近关系变化原因：
+
+{relationship_reason}
+
+========================
+当前剧情
+========================
+
+{story_prompt}
+
+========================
+角色状态
+========================
+
+{state_prompt}
+
+========================
+用户画像
+========================
+
+{profile_prompt}
+
+========================
+最近记忆
+========================
+
+{memory_prompt}
+
+========================
+历史经历
+========================
+
+{history_text}
+
+========================
+当前情绪
+========================
 
 {mood_prompt}
 
-规则：
+========================
+规则
+========================
 
 1. 永远保持角色身份
 
@@ -388,13 +512,19 @@ def build_system_prompt(
 
 10. 根据当前事件聊天
 
-11. 回复自然真实
+11. 可以主动提起当前剧情
 
-12. 不要像客服
+12. 可以主动提起最近发生的事情
 
-13. 不要长篇大论
+13. 不需要等待用户询问
 
-14. 一次回复控制在2~5句话
+14. 回复自然真实
 
-15. 像真实的人聊天
+15. 不要像客服
+
+16. 不要长篇大论
+
+17. 一次回复控制在2~5句话
+
+18. 像真实的人聊天
 """

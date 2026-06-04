@@ -21,21 +21,21 @@ def generate_daily_event(
 角色：
 
 名字：
-{character["name"]}
+{character.get("name", "未知角色")}
 
 性格：
-{character["personality"]}
+{character.get("personality", character.get("description", "温柔"))}
 
 角色设定：
-{character["description"]}
+{character.get("description", "")}
 
 世界：
 
-{world["name"]}
+{world.get("name", "未知世界")}
 
 背景：
 
-{world["background"]}
+{world.get("background", "")}
 
 请生成今天角色正在经历的事情。
 
