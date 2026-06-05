@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from funcation import memory, prompt
 from funcation import memory_agent
+from funcation import memory_rag
 from funcation import relationship_agent
 from funcation import state_agent
 from funcation import story_agent
@@ -64,6 +65,7 @@ def chat(req: ChatRequest):
 
     # 当前世界观
     world = mc.load_current_world()
+    world_id = world.get("id") if world else None
 
     # 世界事件 tick（World → Character State → Story 流水线起点）
     world_event_agent.tick(
@@ -91,6 +93,9 @@ def chat(req: ChatRequest):
         memory_data
     )
 
+    # RAG: 剧情同步到向量库
+    _sync_story_to_rag(char_id, mc, world_id)
+
     memory_data = mc.load_memory(
         character["id"]
     )
@@ -110,6 +115,12 @@ def chat(req: ChatRequest):
         mc,
         world_state_data,
     )
+
+    # RAG: 语义检索相关记忆
+    retrieved = memory_rag.retrieve_memories(
+        char_id, user_input, top_k=10, world_id=world_id
+    )
+
     system_prompt = prompt.build_system_prompt(
         character_id=char_id,
         memory_data=mem,
@@ -117,6 +128,7 @@ def chat(req: ChatRequest):
         messages=messages,
         world_state=world_state_data,
         npc_social_context=npc_social,
+        retrieved_memories=retrieved,
     )
 
     if messages and messages[0]["role"] == "system":
@@ -130,12 +142,19 @@ def chat(req: ChatRequest):
     # 更新用户画像
     mc.update_profile(user_input, char_id)
 
+    # RAG: 画像同步到向量库
+    _sync_profile_to_rag(char_id, mc, world_id)
+
     # 更新好感度
     relationship_agent.update_relationship(
         mc,
         character["id"],
         user_input
     )
+
+    # RAG: 关系和事件同步到向量库
+    _sync_relationship_to_rag(char_id, mc, world_id)
+    _sync_events_to_rag(char_id, mc, world_id)
 
     new_state = (
         state_agent.analyze_state(
@@ -180,17 +199,117 @@ def chat(req: ChatRequest):
     action = memory_result.get("action", "ignore")
     if action == "add":
         mc.add_long_memory(char_id, memory_result["memory"])
+        # RAG: 长期记忆同步到向量库
+        memory_rag.add_memory(
+            char_id, "profile", memory_result["memory"],
+            metadata={"type": "long_memory", "world_id": world_id},
+        )
     elif action == "update":
         mc.update_long_memory(
             char_id,
             memory_result.get("old_memory", ""),
             memory_result.get("new_memory", "")
         )
+        # RAG: 更新向量库中的长期记忆
+        memory_rag.update_memory(
+            char_id, "profile",
+            memory_result.get("old_memory", ""),
+            memory_result.get("new_memory", ""),
+            metadata={"type": "long_memory", "world_id": world_id},
+        )
 
     return {
         "reply": ai_reply,
         "favorability": mc.get_favorability(char_id)
     }
+
+
+# ============================================================
+# RAG 同步辅助函数
+# ============================================================
+
+
+def _sync_profile_to_rag(char_id: str, mc: MemoryCenter, world_id: str | None):
+    """将当前画像字段同步到 profile 集合（upsert）"""
+    profile = mc.get_profile(char_id)
+    field_labels = {"name": "姓名", "city": "城市", "job": "职业", "mood": "情绪"}
+    for field, label in field_labels.items():
+        value = profile.get(field, "")
+        text = f"用户{label}：{value}" if value else f"用户{label}：未知"
+        memory_rag.upsert_memory(
+            char_id, "profile", text,
+            doc_id=f"{char_id}_profile_{field}",
+            metadata={"field": field, "world_id": world_id or ""},
+        )
+
+
+def _sync_story_to_rag(char_id: str, mc: MemoryCenter, world_id: str | None):
+    """将当前剧情同步到 story 集合（upsert 概览 + 各阶段）"""
+    mem = mc.load_memory(char_id)
+    story = mem.get("story", {})
+    if not story or not story.get("story_id"):
+        return
+
+    # 剧情概览
+    overview = f"剧情：{story.get('title', '')}。{story.get('description', '')}"
+    memory_rag.upsert_memory(
+        char_id, "story", overview,
+        doc_id=f"{char_id}_story_overview",
+        metadata={"story_id": story.get("story_id", ""), "world_id": world_id or ""},
+    )
+
+    # 各阶段（当前阶段标注）
+    stages = story.get("stages", [])
+    current_stage = story.get("stage", 0)
+    for i, stage_text in enumerate(stages):
+        prefix = "【当前阶段】" if i == current_stage else ""
+        memory_rag.upsert_memory(
+            char_id, "story", f"{prefix}{stage_text}",
+            doc_id=f"{char_id}_story_stage_{i}",
+            metadata={
+                "story_id": story.get("story_id", ""),
+                "stage_index": i,
+                "is_current": i == current_stage,
+                "world_id": world_id or "",
+            },
+        )
+
+
+def _sync_relationship_to_rag(char_id: str, mc: MemoryCenter, world_id: str | None):
+    """将当前关系同步到 relationship 集合（upsert）"""
+    mem = mc.load_memory(char_id)
+    rel = mem.get("relationship", {})
+    level = rel.get("level", "普通")
+    reason = rel.get("last_reason", "")
+    fav = mem.get("favorability", 50)
+    if reason:
+        text = f"关系等级：{level}（好感度：{fav}），最近变化原因：{reason}"
+    else:
+        text = f"关系等级：{level}（好感度：{fav}）"
+    memory_rag.upsert_memory(
+        char_id, "relationship", text,
+        doc_id=f"{char_id}_relationship",
+        metadata={"level": level, "favorability": fav, "world_id": world_id or ""},
+    )
+
+
+def _sync_events_to_rag(char_id: str, mc: MemoryCenter, world_id: str | None):
+    """将事件列表同步到 events 集合（幂等 upsert，按 text+time hash）"""
+    events = mc.get_events(char_id)
+    for event_item in events:
+        event_text = event_item.get("event", "")
+        event_time = event_item.get("time", "")
+        if not event_text:
+            continue
+        import hashlib
+        doc_hash = hashlib.md5(
+            f"{char_id}_{event_text}_{event_time}".encode()
+        ).hexdigest()[:12]
+        memory_rag.upsert_memory(
+            char_id, "events", event_text,
+            doc_id=f"{char_id}_event_{doc_hash}",
+            metadata={"time": event_time, "world_id": world_id or ""},
+        )
 
 
 # 获取好感度
@@ -493,6 +612,81 @@ def delete_long_memory(req: MemoryItemRequest):
         "message": "未找到该记忆",
         "long_memory": memories
     }
+
+
+# ============================================================
+# RAG 记忆检索 (Memory RAG)
+# ============================================================
+
+
+class MemoryRagAddRequest(BaseModel):
+    collection_type: str
+    text: str
+    metadata: dict | None = None
+
+
+class MemoryRagUpdateRequest(BaseModel):
+    collection_type: str
+    old_text: str
+    new_text: str
+
+
+class MemoryRagDeleteRequest(BaseModel):
+    collection_type: str
+    text: str
+
+
+@app.get("/memory/search")
+def search_memory_rag(query: str, top_k: int = 5):
+    """跨所有集合语义检索记忆"""
+    char_id = mc.get_current_character_id()
+    world_id = mc.get_current_world_id()
+    results = memory_rag.retrieve_memories(
+        char_id, query, top_k=top_k, world_id=world_id
+    )
+    return {"character_id": char_id, "query": query, "results": results}
+
+
+@app.post("/memory/add")
+def add_memory_rag(req: MemoryRagAddRequest):
+    """向指定集合添加一条向量记忆"""
+    char_id = mc.get_current_character_id()
+    world_id = mc.get_current_world_id()
+    if req.metadata is None:
+        req.metadata = {}
+    req.metadata.setdefault("world_id", world_id)
+    doc_id = memory_rag.add_memory(
+        char_id, req.collection_type, req.text, req.metadata
+    )
+    return {"message": "记忆已添加", "doc_id": doc_id}
+
+
+@app.post("/memory/update")
+def update_memory_rag(req: MemoryRagUpdateRequest):
+    """更新向量记忆（删除旧文本，插入新文本）"""
+    char_id = mc.get_current_character_id()
+    world_id = mc.get_current_world_id()
+    doc_id = memory_rag.update_memory(
+        char_id, req.collection_type, req.old_text, req.new_text,
+        metadata={"world_id": world_id},
+    )
+    return {"message": "记忆已更新", "doc_id": doc_id}
+
+
+@app.post("/memory/delete")
+def delete_memory_rag(req: MemoryRagDeleteRequest):
+    """从向量存储中删除一条记忆"""
+    char_id = mc.get_current_character_id()
+    success = memory_rag.delete_memory(char_id, req.collection_type, req.text)
+    return {"message": "记忆已删除" if success else "未找到匹配的记忆"}
+
+
+@app.get("/memory/stats")
+def memory_stats_rag():
+    """获取当前角色各集合的文档数量"""
+    char_id = mc.get_current_character_id()
+    stats = memory_rag.get_collection_stats(char_id)
+    return {"character_id": char_id, "collections": stats}
 
 
 # ============================================================

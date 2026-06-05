@@ -42,8 +42,35 @@ def build_profile_summary(profile):
     return "；".join(fields) if fields else "暂无用户信息"
 
 
-def build_memory_summary(short_messages, long_memories, events, chat_summary=None):
-    """构建记忆摘要"""
+COLLECTION_LABELS = {
+    "profile": "用户信息",
+    "story": "剧情",
+    "events": "事件",
+    "relationship": "关系",
+}
+
+
+def build_memory_summary(
+    short_messages,
+    long_memories,
+    events,
+    chat_summary=None,
+    retrieved_memories=None,
+):
+    """构建记忆摘要（含 RAG 检索结果）"""
+
+    rag_part = ""
+
+    # ── RAG 语义检索结果 ──
+    if retrieved_memories:
+        rag_lines = []
+        for mem in retrieved_memories[:10]:
+            collection = mem.get("collection", "")
+            label = COLLECTION_LABELS.get(collection, collection)
+            rag_lines.append(f"[{label}] {mem['text']}")
+
+        if rag_lines:
+            rag_part = "【相关记忆】（基于当前对话语义检索）\n" + "\n".join(rag_lines) + "\n\n"
 
     # 最近聊天
     short_part = []
@@ -73,8 +100,7 @@ def build_memory_summary(short_messages, long_memories, events, chat_summary=Non
     if chat_summary:
         summary_text = "；".join(str(s) for s in chat_summary[-5:])
 
-    return f"""
-【最近聊天】
+    return f"""{rag_part}【最近聊天】
 {short_text}
 
 【长期记忆】
@@ -95,6 +121,7 @@ def build_system_prompt(
         messages=None,
         world_state=None,
         npc_social_context=None,
+        retrieved_memories=None,
 ):
     """
     构建系统Prompt
@@ -104,6 +131,9 @@ def build_system_prompt(
         memory_data
         world
         messages
+        world_state
+        npc_social_context
+        retrieved_memories: RAG 语义检索结果列表（可选）
     """
 
     # ==========================================
@@ -394,7 +424,8 @@ def build_system_prompt(
         messages or [],
         long_memories,
         events,
-        chat_summary
+        chat_summary,
+        retrieved_memories,
     )
 
     # ==========================================

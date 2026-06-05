@@ -3,14 +3,18 @@
     "name": "lj",
     "city": "上海",
     "job": "Java开发",
-    "mood": "平静",
+    "mood": "无奈",
     "recent_topics": [
-      "这么巧，我也去三楼"
+      "这么巧，我也去三楼",
+      "你怎么会看这本书",
+      "这么努力的孩子呢",
+      "我知道，不能喝冷的现在"
     ]
   },
-  "favorability": 50,
+  "favorability": 54,
   "long_memory": [
-    "用户在上海做Java开发"
+    "用户在上海做Java开发",
+    "用户对努力的孩子表示赞赏"
   ],
   "events": [
     {
@@ -21,26 +25,19 @@
   "chat_summary": [],
   "relationship": {
     "level": "朋友",
-    "last_reason": "普通聊天，无情感倾向"
+    "last_reason": "用户表达了对角色身体状况的关心，显示出体贴和在意，因此好感度小幅上升。"
   },
   "character_state": {
-    "mood": "低落",
+    "mood": "平静",
     "energy": 60,
-    "current_event": {
-      "title": "图书馆的默然与回响",
-      "description": "林婉原本在图书馆靠窗的位置安静阅读，但社团嘉年华因暴雨预警紧急转移到教学楼，走廊里传来混乱的脚步声和争执声，连图书馆的隔音也无法完全隔绝。她皱眉摘下耳机，瞥了一眼窗外阴沉的天空，又低头翻了一页书，试图用文字屏蔽外界的喧嚣，但内心的烦躁和低落却悄然蔓延。",
-      "world_event_id": "a2fab2d7-b9e0-4bd2-82f3-792c1ade1d37",
-      "world_event_title": "校园社团嘉年华突发暴雨预警",
-      "impact": -5,
-      "event_date": "2026-06-05"
-    },
+    "current_event": "",
     "mood_changed": true
   },
   "story": {
     "story_id": "7c3d0147-d581-4da6-91bb-52c0547c1fa1",
     "title": "图书馆的默然与回响",
     "description": "高冷学姐林婉与学弟在校园中从陌生到熟悉的五个阶段，悄然交织的故事。",
-    "stage": 2,
+    "stage": 3,
     "max_stage": 4,
     "stages": [
       "初遇：大一新生在图书馆三楼找不到那本《百年孤独》，正焦急时，林婉从书架后抽出书，递给他时只说了一个字‘给’，然后转身离开，留下一阵清淡的茉莉花香。",
@@ -49,7 +46,7 @@
       "靠近：学校艺术节，他负责布置展板，不小心从梯子上滑落，林婉恰好路过，一把扶住他，语气依旧冷淡但带着一丝关切：‘看路。’之后，她主动帮他整理散落的画纸。",
       "回响：毕业典礼那天，他在图书馆老位置找到一本书，里面夹着一片银杏叶，背面是林婉的字迹：‘谢谢你的勇气，让我学会温柔。’他抬头，她正站在门口，嘴角第一次有了浅浅的笑。"
     ],
-    "last_update_date": "2026-06-04",
+    "last_update_date": "2026-06-05",
     "changed": true,
     "world_event_link": {
       "event_id": "a2fab2d7-b9e0-4bd2-82f3-792c1ade1d37",
@@ -57,12 +54,12 @@
       "reason": "暴雨导致社团嘉年华混乱，林婉作为文学社副社长需协调场地，主角可能主动帮忙或偶遇，推动两人在压力下互动，深化关系。"
     }
   },
-  "last_chat_time": "2026-06-04T19:40:01.725115",
+  "last_chat_time": "2026-06-05T15:26:43.404837",
   "proactive": {
-    "last_time": "2026-06-05T10:17:02.819497",
-    "last_message": "（放下书看向窗外）这雨来得真不是时候，走廊里吵得头疼。你也是来躲清静的？",
-    "last_trigger": "world_event",
-    "today_count": 1
+    "last_time": "2026-06-05T13:32:04.125973",
+    "last_message": "图书馆里这么吵，你怎么不去看看你们的嘉年华？",
+    "last_trigger": "story",
+    "today_count": 2
   },
   "world_event_notice": {
     "changed": false,
