@@ -22,8 +22,11 @@ from funcation import interaction_agent
 from funcation.embedding_manager import preload
 from funcation.memory_center import MemoryCenter
 from funcation.proactive import proactive_engine
+from funcation.conversation_manager import conversation_manager
 
 load_dotenv()
+
+from . import websocket
 
 app = FastAPI()
 
@@ -46,6 +49,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ============================================================
+# 新增：WebSocket路由
+# ============================================================
+
+# 包含WebSocket路由
+app.include_router(websocket.router)
 
 client = OpenAI(
     api_key=os.getenv("DEEPSEEK_API_KEY"),

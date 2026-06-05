@@ -1,0 +1,150 @@
+"""
+WebSocket端点
+处理WebRTC信令和实时语音通话
+"""
+import asyncio
+import json
+import logging
+from typing import Dict
+
+from fastapi import WebSocket, WebSocketDisconnect, APIRouter
+
+from funcation.webrtc_agent import webrtc_agent
+from funcation.conversation_manager import conversation_manager
+
+router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# 活跃WebSocket连接
+active_connections: Dict[int, WebSocket] = {}
+
+
+@router.websocket("/voice/call")
+async def websocket_voice_call(websocket: WebSocket):
+    """语音通话WebSocket端点"""
+    await websocket.accept()
+    connection_id = id(websocket)
+    active_connections[connection_id] = websocket
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            message = json.loads(data)
+
+            msg_type = message.get("type")
+            call_id = message.get("call_id")
+
+            try:
+                if msg_type == "offer":
+                    resp = await webrtc_agent.handle_offer(
+                        websocket=websocket,
+                        offer_data=message.get("offer"),
+                        user_id=message.get("user_id", "default"),
+                        character_id=message.get("character_id", "default"),
+                    )
+                    await websocket.send_text(json.dumps(resp))
+
+                elif msg_type == "answer":
+                    resp = await webrtc_agent.handle_answer(
+                        websocket=websocket,
+                        answer_data=message.get("answer"),
+                        call_id=call_id,
+                    )
+                    await websocket.send_text(json.dumps(resp))
+
+                elif msg_type == "ice_candidate":
+                    resp = await webrtc_agent.handle_ice_candidate(
+                        websocket=websocket,
+                        candidate_data=message.get("candidate"),
+                        call_id=call_id,
+                    )
+                    await websocket.send_text(json.dumps(resp))
+
+                elif msg_type == "start_conversation":
+                    ok = await conversation_manager.start_conversation(
+                        call_id=call_id,
+                        character_id=message.get("character_id"),
+                        user_id=message.get("user_id"),
+                    )
+                    await websocket.send_text(json.dumps({
+                        "type": "conversation_started",
+                        "call_id": call_id,
+                        "success": ok,
+                    }))
+
+                elif msg_type == "audio_data":
+                    # 音频数据已编码为 base64 字符串，解码为 bytes
+                    raw = message.get("audio_data", "")
+                    audio_bytes = raw.encode() if isinstance(raw, str) else raw
+                    resp = await conversation_manager.process_audio(call_id, audio_bytes)
+                    await websocket.send_text(json.dumps(resp))
+
+                elif msg_type == "text_message":
+                    # 浏览器端语音识别完成后的文本
+                    resp = await conversation_manager.process_text_message(
+                        call_id=call_id,
+                        user_message=message.get("text", ""),
+                    )
+                    await websocket.send_text(json.dumps(resp))
+
+                elif msg_type == "get_status":
+                    resp = await webrtc_agent.get_call_status(call_id)
+                    await websocket.send_text(json.dumps(resp))
+
+                elif msg_type == "conversation_status":
+                    resp = await conversation_manager.get_conversation_status(call_id)
+                    await websocket.send_text(json.dumps(resp))
+
+                elif msg_type == "end_call":
+                    await webrtc_agent.end_call(websocket, call_id)
+                    await conversation_manager.end_conversation(call_id)
+                    await websocket.send_text(json.dumps({
+                        "type": "call_ended",
+                        "call_id": call_id,
+                    }))
+
+                elif msg_type == "ping":
+                    await websocket.send_text(json.dumps({
+                        "type": "pong",
+                        "timestamp": asyncio.get_event_loop().time(),
+                    }))
+
+                else:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": f"未知消息类型: {msg_type}",
+                    }))
+
+            except Exception as exc:
+                logger.error("处理消息失败: %s", exc)
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": str(exc),
+                    "call_id": call_id,
+                }))
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket 断开: %d", connection_id)
+    except Exception as exc:
+        logger.error("WebSocket 错误: %s", exc)
+    finally:
+        if connection_id in active_connections:
+            del active_connections[connection_id]
+
+
+@router.websocket("/voice/status")
+async def websocket_status(websocket: WebSocket):
+    """状态监控WebSocket —— 每秒推送系统状态"""
+    await websocket.accept()
+    try:
+        while True:
+            status = {
+                "active_connections": len(active_connections),
+                "timestamp": asyncio.get_event_loop().time(),
+            }
+            await websocket.send_text(json.dumps(status))
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        logger.info("Status WebSocket 断开")
+    except Exception as exc:
+        logger.error("Status WebSocket 错误: %s", exc)
