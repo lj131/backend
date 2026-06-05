@@ -3,35 +3,24 @@
     "name": "lj",
     "city": "上海",
     "job": "Java开发",
-    "mood": "无奈",
+    "mood": "无聊",
     "recent_topics": [
-      "这么巧，我也去三楼",
-      "你怎么会看这本书",
       "这么努力的孩子呢",
-      "我知道，不能喝冷的现在"
+      "我知道，不能喝冷的现在",
+      "hi",
+      "没事就不能找你吗",
+      "哦随时都在吗"
     ]
   },
   "favorability": 54,
-  "long_memory": [
-    "用户在上海做Java开发",
-    "用户对努力的孩子表示赞赏"
-  ],
-  "events": [
-    {
-      "time": "2026-06-04 16:41",
-      "event": "今天一起去图书馆"
-    }
-  ],
-  "chat_summary": [],
   "relationship": {
     "level": "朋友",
-    "last_reason": "用户表达了对角色身体状况的关心，显示出体贴和在意，因此好感度小幅上升。"
+    "last_reason": "普通询问，无情感倾向"
   },
   "character_state": {
     "mood": "平静",
     "energy": 60,
-    "current_event": "",
-    "mood_changed": true
+    "current_event": ""
   },
   "story": {
     "story_id": "7c3d0147-d581-4da6-91bb-52c0547c1fa1",
@@ -54,7 +43,7 @@
       "reason": "暴雨导致社团嘉年华混乱，林婉作为文学社副社长需协调场地，主角可能主动帮忙或偶遇，推动两人在压力下互动，深化关系。"
     }
   },
-  "last_chat_time": "2026-06-05T15:26:43.404837",
+  "last_chat_time": "2026-06-05T15:57:12.905279",
   "proactive": {
     "last_time": "2026-06-05T13:32:04.125973",
     "last_message": "图书馆里这么吵，你怎么不去看看你们的嘉年华？",

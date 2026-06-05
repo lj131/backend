@@ -190,20 +190,10 @@ def update_relationship(
 
         memory_data["relationship"]["level_changed"] = True
 
-        memory_data.setdefault(
-            "events",
-            []
+        mc.add_event(
+            character_id,
+            f"关系从{old_level}变成{new_level}",
         )
-
-        memory_data["events"].append({
-
-            "event":
-                f"关系从{old_level}变成{new_level}",
-
-            "time":
-                str(__import__("datetime")
-                    .datetime.now())
-        })
 
     mc.save_memory(
         character_id,

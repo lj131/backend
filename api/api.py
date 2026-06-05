@@ -152,9 +152,8 @@ def chat(req: ChatRequest):
         user_input
     )
 
-    # RAG: 关系和事件同步到向量库
+    # RAG: 关系同步到向量库
     _sync_relationship_to_rag(char_id, mc, world_id)
-    _sync_events_to_rag(char_id, mc, world_id)
 
     new_state = (
         state_agent.analyze_state(
@@ -199,23 +198,11 @@ def chat(req: ChatRequest):
     action = memory_result.get("action", "ignore")
     if action == "add":
         mc.add_long_memory(char_id, memory_result["memory"])
-        # RAG: 长期记忆同步到向量库
-        memory_rag.add_memory(
-            char_id, "profile", memory_result["memory"],
-            metadata={"type": "long_memory", "world_id": world_id},
-        )
     elif action == "update":
         mc.update_long_memory(
             char_id,
             memory_result.get("old_memory", ""),
             memory_result.get("new_memory", "")
-        )
-        # RAG: 更新向量库中的长期记忆
-        memory_rag.update_memory(
-            char_id, "profile",
-            memory_result.get("old_memory", ""),
-            memory_result.get("new_memory", ""),
-            metadata={"type": "long_memory", "world_id": world_id},
         )
 
     return {
@@ -291,25 +278,6 @@ def _sync_relationship_to_rag(char_id: str, mc: MemoryCenter, world_id: str | No
         doc_id=f"{char_id}_relationship",
         metadata={"level": level, "favorability": fav, "world_id": world_id or ""},
     )
-
-
-def _sync_events_to_rag(char_id: str, mc: MemoryCenter, world_id: str | None):
-    """将事件列表同步到 events 集合（幂等 upsert，按 text+time hash）"""
-    events = mc.get_events(char_id)
-    for event_item in events:
-        event_text = event_item.get("event", "")
-        event_time = event_item.get("time", "")
-        if not event_text:
-            continue
-        import hashlib
-        doc_hash = hashlib.md5(
-            f"{char_id}_{event_text}_{event_time}".encode()
-        ).hexdigest()[:12]
-        memory_rag.upsert_memory(
-            char_id, "events", event_text,
-            doc_id=f"{char_id}_event_{doc_hash}",
-            metadata={"time": event_time, "world_id": world_id or ""},
-        )
 
 
 # 获取好感度

@@ -42,7 +42,7 @@ CURRENT_WORLD_FILE = "current_world.json"
 # ============================================================
 
 def create_default_memory():
-    """创建一个角色的默认记忆结构"""
+    """创建一个角色的默认记忆结构（大数据字段由 ChromaDB 管理，JSON 仅存小状态）"""
     return {
         "profile": {
             "name": "",
@@ -52,9 +52,6 @@ def create_default_memory():
             "recent_topics": []
         },
         "favorability": 50,
-        "long_memory": [],
-        "events": [],
-        "chat_summary": [],
         "relationship": {
             "level": "普通",
             "last_reason": ""
@@ -100,6 +97,9 @@ def create_default_memory():
         },
         "last_chat_time": None
     }
+
+# ChromaDB 管理的大数据字段（不存入 JSON）
+_CHROMA_FIELDS = ["long_memory", "events", "chat_summary"]
 
 
 def create_default_world_state(world_id=""):
@@ -151,20 +151,70 @@ class MemoryCenter:
     # ========== 记忆读写 ==========
 
     def load_memory(self, character_id):
-        """加载角色的完整记忆数据"""
+        """加载角色的完整记忆数据（JSON 小状态 + ChromaDB 大数据）"""
         path = self._get_memory_path(character_id)
         try:
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
         except:
-            return create_default_memory()
+            data = create_default_memory()
+
+        # 一次性迁移：旧 JSON 中的大数据迁移到 ChromaDB
+        self._migrate_to_chroma(character_id, data)
+
+        # 从 ChromaDB 合并大数据字段
+        data["long_memory"] = self.get_long_memories(character_id)
+        data["events"] = self.get_events(character_id)
+        data["chat_summary"] = self.get_chat_summary(character_id)
+
+        return data
+
+    def _migrate_to_chroma(self, character_id, data):
+        """将旧 JSON 中的大数据一次性迁移到 ChromaDB"""
+        from funcation import memory_rag
+
+        # long_memory 迁移
+        old_long = data.pop("long_memory", None)
+        if old_long:
+            existing = memory_rag.list_all_memories(character_id, "long_memory")
+            existing_texts = {item["text"] for item in existing}
+            for text in old_long:
+                text_str = text.get("value", text) if isinstance(text, dict) else str(text)
+                if text_str and text_str not in existing_texts:
+                    memory_rag.add_memory(character_id, "long_memory", text_str)
+
+        # events 迁移
+        old_events = data.pop("events", None)
+        if old_events:
+            existing = memory_rag.list_all_memories(character_id, "events")
+            existing_texts = {item["text"] for item in existing}
+            for evt in old_events:
+                event_text = evt.get("event", "") if isinstance(evt, dict) else str(evt)
+                event_time = evt.get("time", "") if isinstance(evt, dict) else ""
+                if event_text and event_text not in existing_texts:
+                    memory_rag.add_memory(
+                        character_id, "events", event_text,
+                        metadata={"time": event_time},
+                    )
+
+        # chat_summary 迁移
+        old_summary = data.pop("chat_summary", None)
+        if old_summary:
+            existing = memory_rag.list_all_memories(character_id, "chat_summary")
+            existing_texts = {item["text"] for item in existing}
+            for s in old_summary:
+                text_str = str(s)
+                if text_str and text_str not in existing_texts:
+                    memory_rag.add_memory(character_id, "chat_summary", text_str)
 
     def save_memory(self, character_id, data):
-        """保存角色的完整记忆数据"""
+        """保存角色的完整记忆数据（仅小状态入 JSON，大数据已在 ChromaDB）"""
         os.makedirs(MEMORIES_DIR, exist_ok=True)
         path = self._get_memory_path(character_id)
+        # 创建副本，移除 ChromaDB 管理的大数据字段
+        json_data = {k: v for k, v in data.items() if k not in _CHROMA_FIELDS}
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            json.dump(json_data, f, ensure_ascii=False, indent=2)
 
     # ========== 用户画像 ==========
 
@@ -233,66 +283,53 @@ class MemoryCenter:
     # ========== 长期记忆 ==========
 
     def get_long_memories(self, character_id):
-        """获取长期记忆列表"""
-        mem = self.load_memory(character_id)
-        return mem.get("long_memory", [])
+        """获取长期记忆列表（从 ChromaDB）"""
+        from funcation import memory_rag
+        items = memory_rag.list_all_memories(character_id, "long_memory")
+        return [item["text"] for item in items]
 
     def add_long_memory(self, character_id, memory_text):
-        """添加一条长期记忆（自动去重）"""
-        mem = self.load_memory(character_id)
-        memories = mem.setdefault("long_memory", [])
-
-        if memory_text not in memories:
-            memories.append(memory_text)
-
-        mem["long_memory"] = memories
-        self.save_memory(character_id, mem)
+        """添加一条长期记忆（自动去重，写入 ChromaDB）"""
+        existing = self.get_long_memories(character_id)
+        if memory_text in existing:
+            return
+        from funcation import memory_rag
+        memory_rag.add_memory(character_id, "long_memory", memory_text)
 
     def update_long_memory(self, character_id, old_text, new_text):
-        """更新一条长期记忆"""
-        mem = self.load_memory(character_id)
-        memories = mem.get("long_memory", [])
-
-        for i, m in enumerate(memories):
-            if m == old_text:
-                memories[i] = new_text
-                break
-
-        mem["long_memory"] = memories
-        self.save_memory(character_id, mem)
+        """更新一条长期记忆（在 ChromaDB 中）"""
+        from funcation import memory_rag
+        memory_rag.update_memory(character_id, "long_memory", old_text, new_text)
 
     def get_long_memories_text(self, character_id):
-        """获取长期记忆的文本列表（兼容旧格式）"""
-        memories = self.get_long_memories(character_id)
-        # 兼容两种格式：纯字符串列表 和 [{type, value}] 列表
-        result = []
-        for m in memories:
-            if isinstance(m, str):
-                result.append(m)
-            elif isinstance(m, dict):
-                result.append(m.get("value", str(m)))
-        return result
+        """获取长期记忆的文本列表"""
+        return self.get_long_memories(character_id)
 
     # ========== 事件 ==========
 
     def get_events(self, character_id):
-        """获取事件列表"""
-        mem = self.load_memory(character_id)
-        return mem.get("events", [])
+        """获取事件列表（从 ChromaDB）"""
+        from funcation import memory_rag
+        items = memory_rag.list_all_memories(character_id, "events")
+        result = []
+        for item in items:
+            meta = item.get("metadata", {})
+            result.append({
+                "time": meta.get("time", ""),
+                "event": item["text"],
+            })
+        # 按时间排序
+        result.sort(key=lambda x: x.get("time", ""))
+        return result[-50:]  # 最多 50 条
 
     def add_event(self, character_id, event_text):
-        """添加一个事件（带时间戳）"""
-        mem = self.load_memory(character_id)
-        events = mem.setdefault("events", [])
-
-        events.append({
-            "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "event": event_text
-        })
-
-        # 只保留最近 50 条事件
-        mem["events"] = events[-50:]
-        self.save_memory(character_id, mem)
+        """添加一个事件（写入 ChromaDB）"""
+        from funcation import memory_rag
+        event_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+        memory_rag.add_memory(
+            character_id, "events", event_text,
+            metadata={"time": event_time},
+        )
 
     # ========== 角色状态 ==========
 
@@ -318,24 +355,29 @@ class MemoryCenter:
     # ========== 聊天摘要 ==========
 
     def get_chat_summary(self, character_id):
-        """获取聊天摘要列表"""
-        mem = self.load_memory(character_id)
-        return mem.get("chat_summary", [])
+        """获取聊天摘要列表（从 ChromaDB）"""
+        from funcation import memory_rag
+        items = memory_rag.list_all_memories(character_id, "chat_summary")
+        return [item["text"] for item in items]
 
     def update_chat_summary(self, character_id, summaries):
-        """替换聊天摘要"""
-        mem = self.load_memory(character_id)
-        mem["chat_summary"] = summaries
-        self.save_memory(character_id, mem)
+        """替换聊天摘要（清空 ChromaDB 后重新写入）"""
+        from funcation import memory_rag
+        memory_rag.purge_collection(character_id, "chat_summary")
+        for s in summaries:
+            memory_rag.add_memory(character_id, "chat_summary", str(s))
 
     def add_chat_summary(self, character_id, summary):
-        """追加一条聊天摘要"""
-        mem = self.load_memory(character_id)
-        summaries = mem.setdefault("chat_summary", [])
-        summaries.append(summary)
-        # 只保留最近 10 条摘要
-        mem["chat_summary"] = summaries[-10:]
-        self.save_memory(character_id, mem)
+        """追加一条聊天摘要（写入 ChromaDB，保留最近 10 条）"""
+        from funcation import memory_rag
+        memory_rag.add_memory(character_id, "chat_summary", str(summary))
+        # 裁剪：超过 10 条时删除最旧的
+        items = memory_rag.list_all_memories(character_id, "chat_summary")
+        if len(items) > 10:
+            # 删除最旧的 (id 最小的)
+            items.sort(key=lambda x: x.get("id", ""))
+            for item in items[:len(items) - 10]:
+                memory_rag.delete_by_id(character_id, "chat_summary", item["id"])
 
     # ========== 最后聊天时间 ==========
 

@@ -1,11 +1,13 @@
 """
 Memory RAG — 长期记忆向量检索系统
 
-基于 ChromaDB 实现，4 个独立集合按角色隔离：
+基于 ChromaDB 实现，6 个独立集合按角色隔离：
 - profile: 用户画像
+- long_memory: 长期记忆
 - story: 剧情记录
 - events: 世界/角色事件
 - relationship: 关系变化
+- chat_summary: 聊天摘要
 
 持久化目录: data/chroma/
 """
@@ -24,13 +26,22 @@ from funcation.embedding_manager import get_embedding_function
 # ============================================================
 
 PERSIST_DIR = os.path.join("data", "chroma")
-COLLECTION_TYPES = ["profile", "story", "events", "relationship"]
+COLLECTION_TYPES = [
+    "profile",
+    "long_memory",
+    "story",
+    "events",
+    "relationship",
+    "chat_summary",
+]
 
 COLLECTION_LABELS = {
     "profile": "用户信息",
+    "long_memory": "长期记忆",
     "story": "剧情",
     "events": "事件",
     "relationship": "关系",
+    "chat_summary": "聊天摘要",
 }
 
 # ============================================================
@@ -343,6 +354,66 @@ def retrieve_relationship(
 
 
 # ============================================================
+# 全量读取
+# ============================================================
+
+
+def list_all_memories(
+    character_id: str,
+    collection_type: str,
+    where_filter: dict | None = None,
+    limit: int = 200,
+) -> list[dict]:
+    """
+    列出集合中的所有文档（不进行语义检索）。
+
+    参数:
+        character_id: 角色 ID
+        collection_type: 集合类型
+        where_filter: 可选的元数据过滤
+        limit: 最大返回数
+
+    返回:
+        [{"text": str, "metadata": dict}, ...]
+    """
+    collection = _get_collection(character_id, collection_type)
+    try:
+        results = collection.get(
+            where=where_filter,
+            limit=limit,
+            include=["documents", "metadatas"],
+        )
+    except Exception:
+        return []
+
+    if not results["ids"]:
+        return []
+
+    items = []
+    for i, doc_id in enumerate(results["ids"]):
+        items.append({
+            "id": doc_id,
+            "text": results["documents"][i] if results["documents"] else "",
+            "metadata": results["metadatas"][i] if results["metadatas"] else {},
+        })
+    return items
+
+
+def delete_by_id(
+    character_id: str,
+    collection_type: str,
+    doc_id: str,
+) -> bool:
+    """按 doc_id 删除文档"""
+    collection = _get_collection(character_id, collection_type)
+    try:
+        collection.delete(ids=[doc_id])
+        return True
+    except Exception:
+        return False
+
+
+# ============================================================
 # 统计
 # ============================================================
 
@@ -376,3 +447,16 @@ def purge_character(character_id: str) -> dict[str, int]:
         except Exception:
             deleted[ctype] = 0
     return deleted
+
+
+def purge_collection(character_id: str, collection_type: str) -> int:
+    """清空指定集合的所有文档，返回删除数量"""
+    collection = _get_collection(character_id, collection_type)
+    try:
+        count = collection.count()
+        all_ids = collection.get(limit=count, include=[])["ids"]
+        if all_ids:
+            collection.delete(ids=all_ids)
+        return len(all_ids)
+    except Exception:
+        return 0
