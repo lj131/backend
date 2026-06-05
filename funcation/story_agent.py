@@ -272,6 +272,10 @@ def sync_story_to_state(
         {}
     )
 
+    current_event = state.get("current_event", {})
+    if isinstance(current_event, dict) and current_event.get("world_event_id"):
+        return memory_data
+
     current_stage = (
         get_current_stage(
             story

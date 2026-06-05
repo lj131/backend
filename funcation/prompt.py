@@ -92,7 +92,8 @@ def build_system_prompt(
         character_id,
         memory_data,
         world=None,
-        messages=None
+        messages=None,
+        world_state=None
 ):
     """
     构建系统Prompt
@@ -247,6 +248,35 @@ def build_system_prompt(
         current_story_stage = (
             story_stages[story_stage]
         )
+
+    # ==========================================
+    # World Events（来自 world_state/{world_id}.json）
+    # ==========================================
+
+    world_events_prompt = "暂无进行中的世界事件"
+
+    if world_state:
+        current = world_state.get("current_events", [])
+        runtime = world_state.get("world_state", {})
+
+        if current:
+            lines = []
+            for ev in current:
+                if ev.get("status") == "running":
+                    lines.append(
+                        f"- {ev.get('title', '')}（进度{ev.get('progress', 0)}%）："
+                        f"{ev.get('description', '')}"
+                    )
+            if lines:
+                world_events_prompt = "\n".join(lines)
+
+        if runtime:
+            world_events_prompt = f"""当前季节：{runtime.get('season', '未知')}
+当前天气：{runtime.get('weather', '未知')}
+当前时段：{runtime.get('time_period', '未知')}
+
+【进行中的世界事件】
+{world_events_prompt}"""
 
     # ==========================================
     # 好感度
@@ -423,6 +453,12 @@ def build_system_prompt(
 
     return f"""
 {world_prompt}
+
+========================
+世界动态事件
+========================
+
+{world_events_prompt}
 
 ========================
 角色信息

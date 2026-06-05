@@ -7,12 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from pydantic import BaseModel
 
-from funcation import event_agent
 from funcation import memory, prompt
 from funcation import memory_agent
 from funcation import relationship_agent
 from funcation import state_agent
 from funcation import story_agent
+from funcation import world_event_agent
 from funcation.memory_center import MemoryCenter
 from funcation.proactive import proactive_engine
 
@@ -64,10 +64,11 @@ def chat(req: ChatRequest):
     # 当前世界观
     world = mc.load_current_world()
 
-    event_agent.check_daily_event(
+    # 世界事件 tick（World → Character State → Story 流水线起点）
+    world_event_agent.tick(
         mc,
         character,
-        world
+        world,
     )
 
     story_agent.check_story(
@@ -102,11 +103,13 @@ def chat(req: ChatRequest):
     )
 
     # 构建 Prompt
+    world_state_data = mc.load_world_state(world.get("id"))
     system_prompt = prompt.build_system_prompt(
         character_id=char_id,
         memory_data=mem,
         world=world,
-        messages=messages
+        messages=messages,
+        world_state=world_state_data,
     )
 
     if messages and messages[0]["role"] == "system":
@@ -514,6 +517,149 @@ def get_current_world():
     return {
         "world": world
     }
+
+
+# ============================================================
+# 世界事件系统 (World Event Agent)
+# ============================================================
+
+
+class WorldEventCreateRequest(BaseModel):
+    title: str = ""
+    description: str = ""
+    importance: int = 5
+    auto_generate: bool = False
+
+
+class WorldEventUpdateRequest(BaseModel):
+    event_id: str
+    title: str | None = None
+    description: str | None = None
+    importance: int | None = None
+    progress: int | None = None
+    status: str | None = None
+
+
+class WorldTickRequest(BaseModel):
+    force: bool = False
+
+
+@app.get("/world")
+def get_world():
+    """获取当前世界静态定义 + 动态状态（事件、环境）"""
+    world = mc.load_current_world()
+    if not world:
+        return {"error": "world not found"}
+    return world_event_agent.get_world_snapshot(mc, world)
+
+
+@app.get("/world/events")
+def get_world_events():
+    """获取当前世界事件列表（进行中 + 历史）"""
+    world_id = mc.get_current_world_id()
+    return {
+        "world_id": world_id,
+        "current_events": mc.get_current_events(world_id),
+        "history_events": mc.get_history_events(world_id),
+        "world_state": mc.get_world_runtime_state(world_id),
+    }
+
+
+@app.post("/world/event/create")
+def create_world_event(req: WorldEventCreateRequest):
+    """创建世界事件（手动或 AI 自动生成）"""
+    world = mc.load_current_world()
+    character = mc.load_current_character()
+
+    event_data = None
+    if not req.auto_generate:
+        event_data = {
+            "title": req.title,
+            "description": req.description,
+            "importance": req.importance,
+            "progress": 0,
+            "status": "running",
+            "impact": [],
+        }
+
+    event, world_data = world_event_agent.create_event(
+        mc,
+        world,
+        event_data=event_data,
+        auto_generate=req.auto_generate or not req.title,
+    )
+
+    if not event:
+        return {"error": "事件创建失败"}
+
+    world_event_agent.mark_proactive_notice(
+        mc,
+        character["id"],
+        "created",
+        event,
+    )
+    world_event_agent.apply_character_impact(mc, character, event, world)
+
+    return {
+        "message": "世界事件已创建",
+        "event": event,
+        "current_events": world_data.get("current_events", []),
+    }
+
+
+@app.post("/world/event/update")
+def update_world_event(req: WorldEventUpdateRequest):
+    """更新世界事件（进度、状态、标题等）"""
+    world = mc.load_current_world()
+    character = mc.load_current_character()
+    world_id = world.get("id") or mc.get_current_world_id()
+
+    updates = req.model_dump(exclude={"event_id"}, exclude_none=True)
+    event, world_data, notification_type = world_event_agent.update_event(
+        mc,
+        world_id,
+        req.event_id,
+        updates,
+    )
+
+    if not event:
+        return {"error": "事件不存在"}
+
+    if notification_type:
+        world_event_agent.mark_proactive_notice(
+            mc,
+            character["id"],
+            notification_type,
+            event,
+        )
+        world_event_agent.apply_character_impact(mc, character, event, world)
+        if notification_type == "finished":
+            world_event_agent.link_story(
+                mc, character, event, "finished", world
+            )
+
+    return {
+        "message": "世界事件已更新",
+        "event": event,
+        "current_events": world_data.get("current_events", []),
+        "history_events": world_data.get("history_events", []),
+    }
+
+
+@app.post("/world/tick")
+def world_tick(req: WorldTickRequest = WorldTickRequest()):
+    """推进世界时间线：事件进度 + 自动生成 + 角色/剧情联动"""
+    world = mc.load_current_world()
+    character = mc.load_current_character()
+
+    result = world_event_agent.tick(
+        mc,
+        character,
+        world,
+        force=req.force,
+    )
+
+    return result
 
 
 # ============================================================

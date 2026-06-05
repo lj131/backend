@@ -1,0 +1,49 @@
+{
+  "world_id": "campus",
+  "world_state": {
+    "season": "夏",
+    "weather": "晴",
+    "time_period": "上午",
+    "last_tick_date": "2026-06-05",
+    "last_event_gen_date": "2026-06-05",
+    "npc_registry": {},
+    "factions": {},
+    "economy": {}
+  },
+  "current_events": [
+    {
+      "id": "cd7428be-a909-4894-885c-7e8ff8164617",
+      "title": "测试运动会",
+      "description": "学校宣布本周举办春季运动会",
+      "importance": 7,
+      "status": "running",
+      "progress": 60,
+      "impact": [],
+      "world_id": "campus",
+      "created_at": "2026-06-05",
+      "finished_at": ""
+    },
+    {
+      "id": "a2fab2d7-b9e0-4bd2-82f3-792c1ade1d37",
+      "title": "校园社团嘉年华突发暴雨预警",
+      "description": "原定于下午在操场举办的年度社团嘉年华活动，因气象台突然发布暴雨橙色预警，所有室外摊位和表演被迫紧急转移到体育馆和教学楼走廊。现场一片混乱，各社团争抢室内场地，引导标识不足，导致许多学生找不到心仪的社团位置。",
+      "importance": 7,
+      "status": "running",
+      "progress": 0,
+      "impact": [
+        "学生可能错过心仪社团的招新或表演，引发部分不满",
+        "临时转移可能导致社团物资损坏或设备故障，影响活动体验",
+        "部分学生可能因此结识其他社团或不期而遇，产生新的人际互动或爱情线"
+      ],
+      "world_id": "campus",
+      "created_at": "2026-06-05",
+      "finished_at": ""
+    }
+  ],
+  "history_events": [],
+  "meta": {
+    "version": 1,
+    "created_at": "2026-06-05T10:07:58.120368",
+    "updated_at": "2026-06-05T10:08:07.571962"
+  }
+}

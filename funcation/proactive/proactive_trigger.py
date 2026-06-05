@@ -1,5 +1,29 @@
 def detect_trigger(memory_data):
 
+    world_notice = memory_data.get(
+        "world_event_notice",
+        {}
+    )
+
+    if world_notice.get("changed"):
+
+        world_notice["changed"] = False
+
+        type_labels = {
+            "created": "世界事件开始",
+            "advanced": "世界事件推进",
+            "finished": "世界事件结束",
+        }
+
+        return {
+            "trigger": "world_event",
+            "reason": type_labels.get(
+                world_notice.get("type", ""),
+                "世界发生变化",
+            ),
+            "world_event": world_notice,
+        }
+
     story = memory_data.get(
         "story",
         {}

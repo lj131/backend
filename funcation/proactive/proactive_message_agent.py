@@ -45,6 +45,15 @@ def generate_message(
         {}
     )
 
+    world_event_context = ""
+    if trigger.get("trigger") == "world_event":
+        we = trigger.get("world_event", {})
+        world_event_context = f"""
+世界事件：{we.get("title", "")}
+描述：{we.get("description", "")}
+状态：{we.get("type", "")}（进度 {we.get("progress", 0)}%）
+"""
+
     prompt = f"""
 你正在主动联系用户。
 
@@ -79,6 +88,7 @@ def generate_message(
 触发原因：
 
 {trigger["reason"]}
+{world_event_context}
 
 要求：
 

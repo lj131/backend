@@ -30,6 +30,7 @@ from datetime import datetime
 DATA_DIR = "data"
 CHARACTERS_DIR = os.path.join(DATA_DIR, "characters")
 WORLDS_DIR = os.path.join(DATA_DIR, "worlds")
+WORLD_STATE_DIR = os.path.join(DATA_DIR, "world_state")
 MEMORIES_DIR = os.path.join(DATA_DIR, "memories")
 
 CURRENT_CHARACTER_FILE = "current_character.json"
@@ -98,6 +99,31 @@ def create_default_memory():
             "last_update_date": ""
         },
         "last_chat_time": None
+    }
+
+
+def create_default_world_state(world_id=""):
+    """创建世界动态状态的默认结构（独立于角色记忆）"""
+    now = datetime.now().isoformat()
+    return {
+        "world_id": world_id,
+        "world_state": {
+            "season": "",
+            "weather": "晴",
+            "time_period": "",
+            "last_tick_date": "",
+            "last_event_gen_date": "",
+            "npc_registry": {},
+            "factions": {},
+            "economy": {},
+        },
+        "current_events": [],
+        "history_events": [],
+        "meta": {
+            "version": 1,
+            "created_at": now,
+            "updated_at": now,
+        },
     }
 
 
@@ -454,6 +480,50 @@ class MemoryCenter:
 
         return worlds
 
+    # ========== 世界动态状态 (world_state/{world_id}.json) ==========
+
+    def _get_world_state_path(self, world_id):
+        return os.path.join(WORLD_STATE_DIR, f"{world_id}.json")
+
+    def load_world_state(self, world_id=None):
+        """加载世界的动态状态（事件、环境等）"""
+        if world_id is None:
+            world_id = self.get_current_world_id()
+
+        path = self._get_world_state_path(world_id)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            default = create_default_world_state(world_id)
+            self.save_world_state(world_id, default)
+            return default
+
+    def save_world_state(self, world_id, data):
+        """保存世界动态状态"""
+        os.makedirs(WORLD_STATE_DIR, exist_ok=True)
+        data["world_id"] = world_id
+        data.setdefault("meta", {})
+        data["meta"]["updated_at"] = datetime.now().isoformat()
+        path = self._get_world_state_path(world_id)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def get_current_events(self, world_id=None):
+        """获取当前进行中的世界事件"""
+        world_data = self.load_world_state(world_id)
+        return world_data.get("current_events", [])
+
+    def get_history_events(self, world_id=None):
+        """获取已结束的世界历史事件"""
+        world_data = self.load_world_state(world_id)
+        return world_data.get("history_events", [])
+
+    def get_world_runtime_state(self, world_id=None):
+        """获取世界运行时环境（季节、天气、时间段）"""
+        world_data = self.load_world_state(world_id)
+        return world_data.get("world_state", {})
+
     # ========== 主动消息 ==========
 
     def get_proactive_message(self, character_id):
@@ -465,16 +535,23 @@ class MemoryCenter:
         """
         mem = self.load_memory(character_id)
 
-        # ── 检查变更标记 ──
+        # ── 检查变更标记（世界事件优先） ──
+        world_notice = mem.get("world_event_notice", {})
         story = mem.get("story", {})
         rel = mem.get("relationship", {})
         state = mem.get("character_state", {})
 
+        world_event_changed = world_notice.get("changed", False)
         story_changed = story.get("changed", False)
         level_changed = rel.get("level_changed", False)
         mood_changed = state.get("mood_changed", False)
 
-        has_change = story_changed or level_changed or mood_changed
+        has_change = (
+            world_event_changed
+            or story_changed
+            or level_changed
+            or mood_changed
+        )
 
         if has_change:
             from funcation import proactive_agent
@@ -497,6 +574,11 @@ class MemoryCenter:
             msg = proactive_agent.generate_proactive_message(
                 character_name=char_name,
                 character_personality=char_personality,
+                world_event_changed=world_event_changed,
+                world_event_type=world_notice.get("type", ""),
+                world_event_title=world_notice.get("title", ""),
+                world_event_description=world_notice.get("description", ""),
+                world_event_progress=world_notice.get("progress", 0),
                 story_changed=story_changed,
                 story_title=story_title,
                 current_stage_text=current_stage,
@@ -509,6 +591,10 @@ class MemoryCenter:
 
             # 清除已消费的标记
             changed = False
+            if world_event_changed:
+                world_notice.pop("changed", None)
+                mem["world_event_notice"] = world_notice
+                changed = True
             if story_changed:
                 story.pop("changed", None)
                 mem["story"] = story

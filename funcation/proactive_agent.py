@@ -30,6 +30,11 @@ MOOD_MAP = {
 def generate_proactive_message(
     character_name,
     character_personality,
+    world_event_changed=False,
+    world_event_type="",
+    world_event_title="",
+    world_event_description="",
+    world_event_progress=0,
     story_changed=False,
     story_title="",
     current_stage_text="",
@@ -59,6 +64,20 @@ def generate_proactive_message(
     """
 
     change_descriptions = []
+
+    if world_event_changed:
+        type_map = {
+            "created": "刚刚开始",
+            "advanced": "正在发展",
+            "finished": "刚刚结束",
+        }
+        phase = type_map.get(world_event_type, "发生变化")
+        desc = f"🌍 世界事件{phase}：「{world_event_title}」"
+        if world_event_description:
+            desc += f" — {world_event_description}"
+        if world_event_type == "advanced" and world_event_progress:
+            desc += f"（进度 {world_event_progress}%）"
+        change_descriptions.append(desc)
 
     if story_changed:
         change_descriptions.append(
