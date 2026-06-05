@@ -44,6 +44,21 @@ COLLECTION_LABELS = {
     "chat_summary": "聊天摘要",
 }
 
+COLLECTION_WEIGHTS = {
+
+    "profile": 0.4,
+
+    "relationship": 0.6,
+
+    "long_memory": 0.8,
+
+    "story": 1.0,
+
+    "events": 1.1,
+
+    "chat_summary": 1.2
+}
+
 # ============================================================
 # 模块级单例
 # ============================================================
@@ -283,11 +298,29 @@ def _retrieve_single(
             if results.get("metadatas")
             else {}
         )
+        weight = COLLECTION_WEIGHTS.get(
+            collection_type,
+            1.0
+        )
+
+        weighted_score = distance * weight
+
         items.append({
-            "text": results["documents"][0][i],
-            "collection": collection_type,
-            "score": round(distance, 4),
-            "metadata": metadata,
+
+            "text":
+                results["documents"][0][i],
+
+            "collection":
+                collection_type,
+
+            "score":
+                round(distance, 4),
+
+            "weighted_score":
+                round(weighted_score, 4),
+
+            "metadata":
+                metadata
         })
 
     # 按距离升序（越小越相关）
@@ -300,20 +333,54 @@ def retrieve_memories(
     query: str,
     top_k: int = 5,
     world_id: str | None = None,
+    collections: list[str] | None = None,
 ) -> list[dict]:
     """
-    跨所有 4 个集合检索，合并排序后返回 top_k 结果。
+    跨指定集合检索，合并排序后返回 top_k 结果。
+
+    参数:
+        character_id: 角色 ID
+        query: 查询文本
+        top_k: 返回数量
+        world_id: 可选的 world 过滤
+        collections: 指定检索的集合列表，默认全部
 
     返回:
         [{"text": str, "collection": str, "score": float, "metadata": dict}, ...]
     """
+    if collections is None:
+        collections = COLLECTION_TYPES
+
+    # 只检索指定的集合
     all_items = []
-    for ctype in COLLECTION_TYPES:
-        items = _retrieve_single(character_id, ctype, query, top_k=top_k, world_id=world_id)
+    per_collection_k = max(top_k, 3)
+
+    for ctype in collections:
+        if ctype not in COLLECTION_TYPES:
+            continue
+
+        items = _retrieve_single(
+            character_id=character_id,
+            collection_type=ctype,
+            query=query,
+            top_k=per_collection_k,
+            world_id=world_id,
+        )
+
+        for item in items:
+            item["weighted_score"] = item["score"]
+            item["weight"] = 1.0
+
         all_items.extend(items)
 
-    # 全局按距离排序
+    # 按距离升序（越小越相关）
     all_items.sort(key=lambda x: x["score"])
+
+    print(f"\n====== RAG RETRIEVE ({len(collections)} collections) ======")
+    for item in all_items[:top_k]:
+        print(f"  [{item['collection']}] score={item['score']:.4f} | {item['text'][:60]}")
+    print("==========================\n")
+
     return all_items[:top_k]
 
 

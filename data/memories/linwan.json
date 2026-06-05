@@ -3,19 +3,19 @@
     "name": "lj",
     "city": "上海",
     "job": "Java开发",
-    "mood": "无聊",
+    "mood": "开心",
     "recent_topics": [
-      "这么努力的孩子呢",
       "我知道，不能喝冷的现在",
       "hi",
       "没事就不能找你吗",
-      "哦随时都在吗"
+      "哦随时都在吗",
+      "又见面了"
     ]
   },
   "favorability": 54,
   "relationship": {
     "level": "朋友",
-    "last_reason": "普通询问，无情感倾向"
+    "last_reason": "普通问候，无情感倾向"
   },
   "character_state": {
     "mood": "平静",
@@ -36,19 +36,19 @@
       "回响：毕业典礼那天，他在图书馆老位置找到一本书，里面夹着一片银杏叶，背面是林婉的字迹：‘谢谢你的勇气，让我学会温柔。’他抬头，她正站在门口，嘴角第一次有了浅浅的笑。"
     ],
     "last_update_date": "2026-06-05",
-    "changed": true,
+    "changed": false,
     "world_event_link": {
       "event_id": "a2fab2d7-b9e0-4bd2-82f3-792c1ade1d37",
       "event_title": "校园社团嘉年华突发暴雨预警",
       "reason": "暴雨导致社团嘉年华混乱，林婉作为文学社副社长需协调场地，主角可能主动帮忙或偶遇，推动两人在压力下互动，深化关系。"
     }
   },
-  "last_chat_time": "2026-06-05T15:57:12.905279",
+  "last_chat_time": "2026-06-05T17:10:35.987755",
   "proactive": {
-    "last_time": "2026-06-05T13:32:04.125973",
-    "last_message": "图书馆里这么吵，你怎么不去看看你们的嘉年华？",
+    "last_time": "2026-06-05T17:00:33.797926",
+    "last_message": "期中考试快到了，你复习得怎么样？",
     "last_trigger": "story",
-    "today_count": 2
+    "today_count": 3
   },
   "world_event_notice": {
     "changed": false,

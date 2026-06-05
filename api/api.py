@@ -10,17 +10,25 @@ from pydantic import BaseModel
 from funcation import memory, prompt
 from funcation import memory_agent
 from funcation import memory_rag
+from funcation import recall_agent
 from funcation import relationship_agent
 from funcation import state_agent
 from funcation import story_agent
 from funcation import world_event_agent
 from funcation import interaction_agent
+from funcation.embedding_manager import preload
 from funcation.memory_center import MemoryCenter
 from funcation.proactive import proactive_engine
 
 load_dotenv()
 
 app = FastAPI()
+
+# 启动时预热 Embedding 模型，避免首次请求等待
+try:
+    preload()
+except Exception as e:
+    print(f"[Startup] Embedding 预热失败（将在首次请求时重试）: {e}")
 
 # 配置CORS
 app.add_middleware(
@@ -116,9 +124,13 @@ def chat(req: ChatRequest):
         world_state_data,
     )
 
-    # RAG: 语义检索相关记忆
+    # RAG: 由 recall_agent 决定检索哪些集合，再语义检索
+    recalled_collections = recall_agent.detect_memory_scope(
+        user_input, char_id
+    )
     retrieved = memory_rag.retrieve_memories(
-        char_id, user_input, top_k=10, world_id=world_id
+        char_id, user_input, top_k=10, world_id=world_id,
+        collections=recalled_collections,
     )
 
     system_prompt = prompt.build_system_prompt(
