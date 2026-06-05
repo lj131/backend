@@ -1,9 +1,12 @@
 import json
 import os
+import shutil
+import uuid
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 from pydantic import BaseModel
 
@@ -23,6 +26,11 @@ from funcation.proactive import proactive_engine
 load_dotenv()
 
 app = FastAPI()
+
+# 静态文件服务：角色头像
+AVATARS_DIR = os.path.join("data", "avatars")
+os.makedirs(AVATARS_DIR, exist_ok=True)
+app.mount("/avatars", StaticFiles(directory=AVATARS_DIR), name="avatars")
 
 # 启动时预热 Embedding 模型，避免首次请求等待
 try:
@@ -426,6 +434,34 @@ def get_current_character():
     return {
         "character": character
     }
+
+
+# 上传角色头像
+@app.post("/character/avatar")
+async def upload_character_avatar(file: UploadFile = File(...)):
+    """上传当前角色的头像图片"""
+    char_id = mc.get_current_character_id()
+
+    # 校验文件类型
+    allowed_types = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+    if file.content_type not in allowed_types:
+        return {"error": f"不支持的文件类型: {file.content_type}，仅支持 PNG/JPG/GIF/WebP"}
+
+    # 生成唯一文件名
+    ext = file.filename.split(".")[-1] if "." in (file.filename or "") else "png"
+    filename = f"{char_id}_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join(AVATARS_DIR, filename)
+
+    # 保存文件
+    with open(filepath, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    # 更新角色定义中的 avatar 字段
+    character = mc.load_current_character()
+    character["avatar"] = f"/avatars/{filename}"
+    mc.save_character(character)
+
+    return {"message": "头像上传成功", "avatar": character["avatar"]}
 
 
 # 获取角色状态

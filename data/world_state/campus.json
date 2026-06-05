@@ -6,7 +6,115 @@
     "time_period": "上午",
     "last_tick_date": "2026-06-05",
     "last_event_gen_date": "2026-06-05",
-    "npc_registry": {},
+    "npc_registry": {
+      "relationships": {
+        "linwan": {
+          "maid": {
+            "favorability": 50,
+            "trust": 50,
+            "intimacy": 30
+          },
+          "xiaomei": {
+            "favorability": 51,
+            "trust": 50,
+            "intimacy": 30
+          }
+        },
+        "maid": {
+          "xiaomei": {
+            "favorability": 50,
+            "trust": 50,
+            "intimacy": 30
+          }
+        }
+      },
+      "recent_interactions": [
+        {
+          "time": "2026-06-05 17:13",
+          "summary": "林婉、小羽和小梅在校园里相遇，讨论即将到来的春季运动会。林婉保持高冷，小羽温柔，小梅也较为冷淡。三人简短交流后各自离开。",
+          "dialogues": [
+            {
+              "speaker": "maid",
+              "content": "你们听说了吗？学校要开春季运动会了，好期待啊！"
+            },
+            {
+              "speaker": "linwan",
+              "content": "嗯，不过天气这么热，运动会也没什么意思。"
+            },
+            {
+              "speaker": "xiaomei",
+              "content": "确实，还不如在图书馆看书。"
+            },
+            {
+              "speaker": "maid",
+              "content": "别这么说嘛，一起参加项目多好玩呀！林婉你跑步不是很厉害吗？"
+            },
+            {
+              "speaker": "linwan",
+              "content": "再说吧，我先走了。"
+            },
+            {
+              "speaker": "xiaomei",
+              "content": "我也去图书馆了。"
+            }
+          ],
+          "world_impact": "运动会讨论度略有提升，但三位主要角色参与意愿不高。",
+          "event_id": "cd7428be-a909-4894-885c-7e8ff8164617"
+        },
+        {
+          "time": "2026-06-05 17:24",
+          "summary": "林婉、小羽和小梅在校园里相遇，小羽再次提议参加运动会，但林婉和小梅都表示不感兴趣，三人决定去图书馆学习。",
+          "dialogues": [
+            {
+              "speaker": "maid",
+              "content": "林婉，小梅，你们觉得运动会怎么样？要不要一起去报名？"
+            },
+            {
+              "speaker": "linwan",
+              "content": "运动会？没兴趣，还不如去图书馆。"
+            },
+            {
+              "speaker": "xiaomei",
+              "content": "我也觉得图书馆比较好，运动会太晒了。"
+            },
+            {
+              "speaker": "maid",
+              "content": "好吧，那我也跟你们一起去图书馆吧，反正我也没什么运动细胞。"
+            },
+            {
+              "speaker": "linwan",
+              "content": "嗯，那走吧。"
+            }
+          ],
+          "world_impact": "运动会参与度可能下降，但图书馆人流增加。",
+          "event_id": "cd7428be-a909-4894-885c-7e8ff8164617"
+        }
+      ],
+      "gossip": [
+        {
+          "time": "2026-06-05 17:13",
+          "source": "maid",
+          "target": "linwan",
+          "content": "林婉好像不太想参加运动会"
+        },
+        {
+          "time": "2026-06-05 17:13",
+          "source": "maid",
+          "target": "xiaomei",
+          "content": "小梅也不感兴趣"
+        }
+      ],
+      "world_impacts": [
+        {
+          "time": "2026-06-05 17:13",
+          "impact": "运动会讨论度略有提升，但三位主要角色参与意愿不高。"
+        },
+        {
+          "time": "2026-06-05 17:24",
+          "impact": "运动会参与度可能下降，但图书馆人流增加。"
+        }
+      ]
+    },
     "factions": {},
     "economy": {}
   },
@@ -44,6 +152,6 @@
   "meta": {
     "version": 1,
     "created_at": "2026-06-05T10:07:58.120368",
-    "updated_at": "2026-06-05T10:08:07.571962"
+    "updated_at": "2026-06-05T17:24:50.645436"
   }
 }

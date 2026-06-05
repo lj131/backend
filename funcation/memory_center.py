@@ -456,7 +456,8 @@ class MemoryCenter:
                             characters.append({
                                 "id": char_id,
                                 "name": data.get("name", char_id),
-                                "description": data.get("description", "")
+                                "description": data.get("description", ""),
+                                "avatar": data.get("avatar", ""),
                             })
                     except:
                         pass
