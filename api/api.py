@@ -13,6 +13,7 @@ from funcation import relationship_agent
 from funcation import state_agent
 from funcation import story_agent
 from funcation import world_event_agent
+from funcation import interaction_agent
 from funcation.memory_center import MemoryCenter
 from funcation.proactive import proactive_engine
 
@@ -104,12 +105,18 @@ def chat(req: ChatRequest):
 
     # 构建 Prompt
     world_state_data = mc.load_world_state(world.get("id"))
+    npc_social = interaction_agent.build_social_prompt_for_character(
+        char_id,
+        mc,
+        world_state_data,
+    )
     system_prompt = prompt.build_system_prompt(
         character_id=char_id,
         memory_data=mem,
         world=world,
         messages=messages,
         world_state=world_state_data,
+        npc_social_context=npc_social,
     )
 
     if messages and messages[0]["role"] == "system":
@@ -659,6 +666,21 @@ def world_tick(req: WorldTickRequest = WorldTickRequest()):
         force=req.force,
     )
 
+    return result
+
+
+@app.get("/world/interactions")
+def get_world_interactions():
+    """获取 NPC 间关系与近期互动记录"""
+    world_id = mc.get_current_world_id()
+    return interaction_agent.get_interaction_snapshot(mc, world_id)
+
+
+@app.post("/world/interaction/simulate")
+def simulate_world_interaction():
+    """手动触发一次多角色互动模拟（基于当前世界事件）"""
+    world = mc.load_current_world()
+    result = interaction_agent.run_interaction(mc, world)
     return result
 
 

@@ -113,6 +113,7 @@ def create_default_world_state(world_id=""):
             "time_period": "",
             "last_tick_date": "",
             "last_event_gen_date": "",
+            "last_interaction_date": "",
             "npc_registry": {},
             "factions": {},
             "economy": {},
@@ -523,6 +524,45 @@ class MemoryCenter:
         """获取世界运行时环境（季节、天气、时间段）"""
         world_data = self.load_world_state(world_id)
         return world_data.get("world_state", {})
+
+    # ========== NPC 社交网络 (world_state.npc_registry) ==========
+
+    def ensure_npc_registry(self, world_data):
+        """确保 npc_registry 结构完整"""
+        runtime = world_data.setdefault("world_state", {})
+        registry = runtime.setdefault("npc_registry", {})
+        registry.setdefault("relationships", {})
+        registry.setdefault("recent_interactions", [])
+        registry.setdefault("gossip", [])
+        registry.setdefault("world_impacts", [])
+        return registry
+
+    def get_npc_relationships(self, world_id=None):
+        """获取角色间关系矩阵"""
+        world_data = self.load_world_state(world_id)
+        registry = self.ensure_npc_registry(world_data)
+        return registry.get("relationships", {})
+
+    def get_npc_relationship(self, world_id, from_id, to_id):
+        """获取两个角色之间的关系，不存在时返回默认值"""
+        relationships = self.get_npc_relationships(world_id)
+        default = {"favorability": 50, "trust": 50, "intimacy": 30}
+        return relationships.get(from_id, {}).get(to_id, default)
+
+    def update_npc_relationship(self, world_id, from_id, to_id, deltas):
+        """手动更新角色间关系 delta"""
+        world_data = self.load_world_state(world_id)
+        registry = self.ensure_npc_registry(world_data)
+        rel = registry["relationships"].setdefault(from_id, {}).setdefault(
+            to_id,
+            {"favorability": 50, "trust": 50, "intimacy": 30},
+        )
+        for key in ("favorability", "trust", "intimacy"):
+            if key in deltas:
+                rel[key] = max(0, min(100, rel.get(key, 50) + int(deltas[key])))
+        world_data["world_state"]["npc_registry"] = registry
+        self.save_world_state(world_id, world_data)
+        return rel
 
     # ========== 主动消息 ==========
 

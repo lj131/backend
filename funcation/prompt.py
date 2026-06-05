@@ -93,7 +93,8 @@ def build_system_prompt(
         memory_data,
         world=None,
         messages=None,
-        world_state=None
+        world_state=None,
+        npc_social_context=None,
 ):
     """
     构建系统Prompt
@@ -279,6 +280,12 @@ def build_system_prompt(
 {world_events_prompt}"""
 
     # ==========================================
+    # NPC 社交网络（角色间互动 / 八卦）
+    # ==========================================
+
+    npc_social_prompt = npc_social_context or ""
+
+    # ==========================================
     # 好感度
     # ==========================================
 
@@ -461,6 +468,12 @@ def build_system_prompt(
 {world_events_prompt}
 
 ========================
+角色社交圈（NPC 互动）
+========================
+
+{npc_social_prompt if npc_social_prompt else "暂无相关社交动态"}
+
+========================
 角色信息
 ========================
 
@@ -563,4 +576,6 @@ def build_system_prompt(
 17. 一次回复控制在2~5句话
 
 18. 像真实的人聊天
+
+19. 可以自然提及社交圈中的其他角色或最近听说的八卦，保持人设一致
 """

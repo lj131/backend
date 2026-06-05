@@ -528,13 +528,38 @@ def tick(memory_center, character, world_def, force=False):
             notifications,
         )
 
-    return {
+    interaction_result = None
+    if notifications:
+        last_interaction = runtime.get("last_interaction_date", "")
+        if last_interaction != today:
+            from funcation import interaction_agent
+
+            trigger_event = notifications[-1]["event"]
+            interaction_result = interaction_agent.run_interaction(
+                memory_center,
+                world_def,
+                trigger_event,
+            )
+            if interaction_result.get("action") == "simulated":
+                runtime["last_interaction_date"] = today
+                world_data["world_state"] = runtime
+                memory_center.save_world_state(world_id, world_data)
+        else:
+            interaction_result = {
+                "action": "skipped",
+                "reason": "already_interacted_today",
+            }
+
+    result = {
         "action": "ticked",
         "world_id": world_id,
         "notifications": notifications,
         "current_events": world_data.get("current_events", []),
         "world_state": runtime,
     }
+    if interaction_result:
+        result["npc_interaction"] = interaction_result
+    return result
 
 
 # ============================================================
