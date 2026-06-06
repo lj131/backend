@@ -11,6 +11,7 @@ Memory RAG — 长期记忆向量检索系统
 
 持久化目录: data/chroma/
 """
+from __future__ import annotations
 
 import hashlib
 import os
@@ -18,14 +19,17 @@ import uuid
 
 import chromadb
 from chromadb.config import Settings
-
+from pathlib import Path
 from funcation.embedding_manager import get_embedding_function
 
 # ============================================================
 # 常量
 # ============================================================
 
-PERSIST_DIR = os.path.join("data", "chroma")
+# PERSIST_DIR = os.path.join("data", "chroma")
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+PERSIST_DIR = str(BASE_DIR / "data" / "chroma")
 COLLECTION_TYPES = [
     "profile",
     "long_memory",
@@ -73,8 +77,11 @@ def _get_client() -> chromadb.PersistentClient:
         os.makedirs(PERSIST_DIR, exist_ok=True)
         _chroma_client = chromadb.PersistentClient(
             path=PERSIST_DIR,
-            settings=Settings(anonymized_telemetry=False),
+            settings=Settings(
+                anonymized_telemetry=False
+            ),
         )
+        print("Chroma Path:", PERSIST_DIR)
     return _chroma_client
 
 

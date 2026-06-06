@@ -6,6 +6,8 @@
 所有 agent 都是模块级函数，不是类方法。
 """
 import asyncio
+import base64
+import json
 import logging
 import os
 import time
@@ -55,6 +57,7 @@ class ConversationContext:
     last_audio_time: float = 0.0
     audio_buffer: bytes = b""
     last_response_time: float = 0.0
+    websocket: Any = None
     stats: dict = field(default_factory=lambda: {
         "messages_processed": 0,
         "audio_bytes_received": 0,
@@ -89,19 +92,25 @@ class ConversationManager:
     # 生命周期
     # ------------------------------------------------------------------
 
-    async def start_conversation(self, call_id: str, character_id: str, user_id: str) -> bool:
+    async def start_conversation(self, call_id: str, character_id: str, user_id: str, websocket=None) -> bool:
         """初始化一个通话会话"""
+        # 防护：character_id 不能为空
+        if not character_id:
+            logger.error("start_conversation: character_id is required")
+            return False
+
         try:
             ctx = ConversationContext(
                 call_id=call_id,
                 character_id=character_id,
                 user_id=user_id,
+                websocket=websocket,
             )
             self.contexts[call_id] = ctx
 
             if character_id not in self.memory_centers:
                 mc = MemoryCenter()
-                mc.switch_character(character_id)  # 与 /character/switch 的写法一致
+                mc.set_current_character(character_id)
                 self.memory_centers[character_id] = mc
 
             logger.info("Conversation started — call_id=%s char=%s", call_id, character_id)
@@ -229,18 +238,41 @@ class ConversationManager:
         )
         ai_reply = resp.choices[0].message.content.strip()
 
-        # ⑨ 记忆提取
-        memory_agent_mod.extract_memory(user_input, mc, char_id)
+        # 保存本轮对话到消息历史（维持多轮上下文）
+        ctx.message_history.append({"role": "assistant", "content": ai_reply})
 
-        # ⑩ 保存 & 聊天摘要
-        mc.add_chat_summary(char_id, f"用户: {user_input}")
-        mc.add_chat_summary(char_id, f"AI: {ai_reply}")
-        mc.update_last_chat_time(char_id)
-        mc.save_memory(char_id, memory_data)
+        # ⑨ 记忆提取（非关键路径，失败不影响回复）
+        try:
+            current_memories = mc.get_long_memories_text(char_id)
+            memory_result = memory_agent_mod.extract_memory(user_input, current_memories)
+            action = memory_result.get("action", "ignore")
+            if action == "add":
+                mc.add_long_memory(char_id, memory_result["memory"])
+            elif action == "update":
+                mc.update_long_memory(
+                    char_id,
+                    memory_result.get("old_memory", ""),
+                    memory_result.get("new_memory", ""),
+                )
+        except Exception as mem_err:
+            logger.warning("记忆提取失败（非关键）: %s", mem_err)
 
-        # ⑪ TTS 异步合成
-        await self._queue_tts(ctx.call_id, ai_reply, char_id)
-        ctx.stats["tts_requests"] += 1
+        # ⑩ 保存 & 聊天摘要（非关键路径）
+        try:
+            mc.add_chat_summary(char_id, f"用户: {user_input}")
+            mc.add_chat_summary(char_id, f"AI: {ai_reply}")
+            mc.update_last_chat_time(char_id)
+            mc.save_memory(char_id, memory_data)
+        except Exception as save_err:
+            logger.warning("保存状态失败（非关键）: %s", save_err)
+
+        # ⑪ TTS 异步合成（非关键路径）
+        try:
+            await self._queue_tts(ctx.call_id, ai_reply, char_id)
+            ctx.stats["tts_requests"] += 1
+        except Exception as tts_err:
+            logger.warning("TTS 入队失败（非关键）: %s", tts_err)
+
         ctx.last_response_time = time.time()
 
         return {
@@ -281,9 +313,23 @@ class ConversationManager:
                 logger.error("process_tts_queue error: %s", exc)
 
     async def _send_audio_to_frontend(self, call_id: str, audio_data: bytes):
-        """将 TTS 语音发送给前端 —— 当前版本仅记录大小，待 WebRTC 集成"""
-        logger.info("TTS audio ready — call_id=%s size=%d", call_id, len(audio_data))
-        # TODO: 通过 WebSocket 或 WebRTC DataChannel 将 wav/mp3 推送到前端
+        """通过 WebSocket 将 TTS 音频下发给前端（base64 编码）"""
+        ctx = self.contexts.get(call_id)
+        if ctx is None or ctx.websocket is None:
+            logger.warning("TTS audio skipped — no websocket for call_id=%s", call_id)
+            return
+
+        try:
+            payload = json.dumps({
+                "type": "tts_audio",
+                "call_id": call_id,
+                "audio": base64.b64encode(audio_data).decode("ascii"),
+                "format": "wav",
+            })
+            await ctx.websocket.send_text(payload)
+            logger.info("TTS audio sent — call_id=%s size=%d", call_id, len(audio_data))
+        except Exception as exc:
+            logger.error("Failed to send TTS audio — call_id=%s: %s", call_id, exc)
 
     # ------------------------------------------------------------------
     # 状态查询 / 清理

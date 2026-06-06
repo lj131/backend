@@ -7,12 +7,78 @@ import json
 import logging
 from typing import Dict, Optional
 from dataclasses import dataclass
-from aiortc import RTCPeerConnection, RTCSessionDescription, RTCDataChannel
+from aiortc import RTCPeerConnection, RTCSessionDescription, RTCDataChannel, RTCIceCandidate
 from aiortc.contrib.media import MediaPlayer
 import uuid
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _parse_candidate_sdp(candidate_str: str, sdpMid=None, sdpMLineIndex=None):
+    """
+    解析 SDP candidate 字符串为 aiortc RTCIceCandidate。
+
+    SDP 候选格式示例:
+        candidate:1 1 UDP 2122252543 192.168.1.1 54321 typ host
+        candidate:2 1 UDP 2122252543 192.168.1.1 54322 typ srflx raddr 10.0.0.1 rport 12345
+    """
+    if not candidate_str:
+        return None
+
+    parts = candidate_str.split()
+    if len(parts) < 8:
+        logger.warning(f"Invalid candidate SDP string: {candidate_str}")
+        return None
+
+    try:
+        # candidate:<foundation> <component> <protocol> <priority> <ip> <port> typ <type> ...
+        foundation = parts[0].split(":")[1] if ":" in parts[0] else parts[0]
+        component = int(parts[1])
+        protocol = parts[2].lower()
+        priority = int(parts[3])
+        ip = parts[4]
+        port = int(parts[5])
+        # parts[6] should be "typ"
+        candidate_type = parts[7] if len(parts) > 7 else "host"
+
+        related_address = None
+        related_port = None
+        tcp_type = None
+
+        # 解析可选字段
+        i = 8
+        while i < len(parts) - 1:
+            if parts[i] == "raddr":
+                related_address = parts[i + 1]
+                i += 2
+            elif parts[i] == "rport":
+                related_port = int(parts[i + 1])
+                i += 2
+            elif parts[i] == "tcptype":
+                tcp_type = parts[i + 1]
+                i += 2
+            else:
+                i += 1
+
+        return RTCIceCandidate(
+            component=component,
+            foundation=foundation,
+            ip=ip,
+            port=port,
+            priority=priority,
+            protocol=protocol,
+            type=candidate_type,
+            relatedAddress=related_address,
+            relatedPort=related_port,
+            sdpMid=sdpMid,
+            sdpMLineIndex=sdpMLineIndex,
+            tcpType=tcp_type,
+        )
+    except (ValueError, IndexError) as e:
+        logger.warning(f"Failed to parse candidate SDP: {candidate_str}, error: {e}")
+        return None
+
 
 @dataclass
 class CallSession:
@@ -76,15 +142,18 @@ class WebRTCAgent:
             @pc.on("connectionstatechange")
             async def on_connectionstatechange():
                 state = pc.connectionState
-                logger.info(f"Connection state: {state}")
+                logger.info(f"Connection state: {state} (call_id={call_id})")
 
-                # 发送状态更新
-                status_data = {
-                    "type": "connection_state",
-                    "state": state,
-                    "call_id": call_id
-                }
-                await websocket.send_text(json.dumps(status_data))
+                # 发送状态更新（WebSocket 可能已关闭，捕获异常）
+                try:
+                    status_data = {
+                        "type": "connection_state",
+                        "state": state,
+                        "call_id": call_id,
+                    }
+                    await websocket.send_text(json.dumps(status_data))
+                except Exception:
+                    pass  # WebSocket 已断开，无需发送
 
                 # 连接成功
                 if state == "connected":
@@ -94,11 +163,11 @@ class WebRTCAgent:
 
             # 设置远程描述
             offer = RTCSessionDescription(sdp=offer_data["sdp"], type=offer_data["type"])
-            await pc.set_remote_description(offer)
+            await pc.setRemoteDescription(offer)
 
             # 创建answer
-            answer = await pc.create_answer()
-            await pc.set_local_description(answer)
+            answer = await pc.createAnswer()
+            await pc.setLocalDescription(answer)
 
             # 创建通话会话
             call_session = CallSession(
@@ -110,11 +179,10 @@ class WebRTCAgent:
             )
             self.call_sessions[call_id] = call_session
 
-            # 发送answer给前端
+            # 发送answer给前端（type 既是消息类型也是 SDP 类型，值均为 "answer"）
             response = {
-                "type": "answer",
-                "sdp": pc.local_description.sdp,
-                "type": pc.local_description.type,
+                "type": pc.localDescription.type,  # SDP type: "answer"
+                "sdp": pc.localDescription.sdp,
                 "call_id": call_id
             }
 
@@ -135,7 +203,7 @@ class WebRTCAgent:
 
             # 设置远程描述
             answer = RTCSessionDescription(sdp=answer_data["sdp"], type=answer_data["type"])
-            await pc.set_remote_description(answer)
+            await pc.setRemoteDescription(answer)
 
             return {"type": "answer_accepted", "call_id": call_id}
 
@@ -152,14 +220,21 @@ class WebRTCAgent:
 
             pc = call_session.peer_connection
 
-            # 创建ICE候选
-            candidate = RTCSessionDescription(
-                sdp=candidate_data["candidate"],
-                type="candidate"
+            # 前端发送的 candidate 是 SDP 候选字符串
+            # 格式: candidate:<foundation> <component> <protocol> <priority> <ip> <port> typ <type>
+            candidate_str = candidate_data.get("candidate", "")
+            sdp_mid = candidate_data.get("sdpMid")
+            sdp_mline_index = candidate_data.get("sdpMLineIndex")
+
+            # 解析 SDP 候选字符串为 RTCIceCandidate
+            ice_candidate = _parse_candidate_sdp(
+                candidate_str,
+                sdpMid=sdp_mid,
+                sdpMLineIndex=sdp_mline_index,
             )
 
-            # 添加ICE候选
-            await pc.add_ice_candidate(candidate)
+            if ice_candidate:
+                await pc.addIceCandidate(ice_candidate)
 
             return {"type": "ice_candidate_handled", "call_id": call_id}
 
