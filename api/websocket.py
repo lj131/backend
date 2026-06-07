@@ -44,14 +44,23 @@ async def websocket_voice_call(websocket: WebSocket):
             msg_type = message.get("type")
             call_id = message.get("call_id")
 
+            # 非 ping 消息都打印日志
+            if msg_type != "ping":
+                logger.info("[VOICE WS] 收到: type=%s call_id=%s keys=%s",
+                            msg_type, call_id, list(message.keys()))
+
             try:
                 if msg_type == "offer":
+                    logger.info("[VOICE WS] → handle_offer char=%s",
+                                message.get("character_id", "?"))
                     resp = await webrtc_agent.handle_offer(
                         websocket=websocket,
                         offer_data=message.get("offer"),
                         user_id=message.get("user_id", "default"),
                         character_id=message.get("character_id", "default"),
                     )
+                    logger.info("[VOICE WS] ← handle_offer 返回: %s",
+                                {k: v for k, v in resp.items() if k != "sdp"})
                     await _safe_send(resp)
 
                 elif msg_type == "answer":
@@ -71,12 +80,15 @@ async def websocket_voice_call(websocket: WebSocket):
                     await _safe_send(resp)
 
                 elif msg_type == "start_conversation":
+                    logger.info("[VOICE WS] → start_conversation call_id=%s char=%s",
+                                call_id, message.get("character_id", "?"))
                     ok = await conversation_manager.start_conversation(
                         call_id=call_id,
                         character_id=message.get("character_id"),
                         user_id=message.get("user_id"),
                         websocket=websocket,
                     )
+                    logger.info("[VOICE WS] ← start_conversation 返回: ok=%s", ok)
                     await _safe_send({
                         "type": "conversation_started",
                         "call_id": call_id,
@@ -84,18 +96,19 @@ async def websocket_voice_call(websocket: WebSocket):
                     })
 
                 elif msg_type == "audio_data":
-                    # 音频数据已编码为 base64 字符串，解码为 bytes
                     raw = message.get("audio_data", "")
                     audio_bytes = raw.encode() if isinstance(raw, str) else raw
                     resp = await conversation_manager.process_audio(call_id, audio_bytes)
                     await _safe_send(resp)
 
                 elif msg_type == "text_message":
-                    # 浏览器端语音识别完成后的文本
+                    text = message.get("text", "")
+                    logger.info("[VOICE WS] → text_message: '%s'", text[:80])
                     resp = await conversation_manager.process_text_message(
                         call_id=call_id,
-                        user_message=message.get("text", ""),
+                        user_message=text,
                     )
+                    logger.info("[VOICE WS] ← text_message 处理完成 type=%s", resp.get("type"))
                     await _safe_send(resp)
 
                 elif msg_type == "get_status":
@@ -107,6 +120,7 @@ async def websocket_voice_call(websocket: WebSocket):
                     await _safe_send(resp)
 
                 elif msg_type == "end_call":
+                    logger.info("[VOICE WS] → end_call call_id=%s", call_id)
                     await webrtc_agent.end_call(websocket, call_id)
                     await conversation_manager.end_conversation(call_id)
                     await _safe_send({
@@ -121,13 +135,14 @@ async def websocket_voice_call(websocket: WebSocket):
                     })
 
                 else:
+                    logger.warning("[VOICE WS] 未知消息类型: %s", msg_type)
                     await _safe_send({
                         "type": "error",
                         "message": f"未知消息类型: {msg_type}",
                     })
 
             except Exception as exc:
-                logger.error("处理消息失败: %s", exc)
+                logger.error("[VOICE WS] 处理消息失败: %s", exc)
                 await _safe_send({
                     "type": "error",
                     "message": str(exc),

@@ -1,7 +1,10 @@
+import asyncio
 import json
 import os
 import shutil
 import uuid
+
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile
@@ -23,12 +26,28 @@ from funcation.embedding_manager import preload
 from funcation.memory_center import MemoryCenter
 from funcation.proactive import proactive_engine
 from funcation.conversation_manager import conversation_manager
+from funcation.utils import retry_sync
 
 load_dotenv()
 
 from . import websocket
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    # Startup
+    tts_task = asyncio.create_task(conversation_manager.process_tts_queue())
+    print("[Startup] TTS 语音合成队列已启动")
+    yield
+    # Shutdown
+    tts_task.cancel()
+    try:
+        await tts_task
+    except asyncio.CancelledError:
+        pass
+
+
+app = FastAPI(lifespan=lifespan)
 
 # 静态文件服务：角色头像
 AVATARS_DIR = os.path.join("data", "avatars")
@@ -202,10 +221,13 @@ def chat(req: ChatRequest):
         "content": user_input
     })
 
-    response = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=messages,
-        temperature=0.9
+    response = retry_sync(
+        lambda: client.chat.completions.create(
+            model="deepseek-chat",
+            messages=messages,
+            temperature=0.9,
+        ),
+        max_retries=3,
     )
 
     ai_reply = response.choices[0].message.content

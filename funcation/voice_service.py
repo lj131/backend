@@ -106,11 +106,16 @@ class VoiceService:
             voice = character_voices.get(character_id, config.voice_name)
 
             # 创建Communicate实例
+            # Edge TTS rate 格式: "+0%", "+10%", "-20%"
+            rate_pct = int((config.speaking_rate - 1.0) * 100)
+            rate_str = f"{rate_pct:+d}%"
+            pitch_pct = int(config.pitch)
+            pitch_str = f"{pitch_pct:+d}Hz"
             communicate = Communicate(
                 text=text,
                 voice=voice,
-                rate=str(config.speaking_rate),
-                pitch=str(config.pitch),
+                rate=rate_str,
+                pitch=pitch_str,
                 volume=str(config.volume)
             )
 

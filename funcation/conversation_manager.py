@@ -28,6 +28,7 @@ from funcation import story_agent
 from funcation import world_event_agent
 from funcation.memory_center import MemoryCenter
 from funcation.memory_rag import retrieve_memories
+from funcation.utils import retry_async
 
 from .voice_service import voice_service
 
@@ -162,8 +163,11 @@ class ConversationManager:
 
     async def process_text_message(self, call_id: str, user_message: str) -> Dict:
         """处理前端识别的文本（浏览器端语音识别完成后调用）"""
+        logger.info("[VOICE CM] process_text_message call_id=%s text='%s'", call_id, user_message[:80])
+
         ctx = self.contexts.get(call_id)
         if ctx is None:
+            logger.error("[VOICE CM] call_id=%s 未找到会话！活跃会话: %s", call_id, list(self.contexts.keys()))
             return {"type": "error", "call_id": call_id, "message": "call not found"}
 
         ctx.state = ConversationState.PROCESSING
@@ -171,11 +175,13 @@ class ConversationManager:
         ctx.stats["messages_processed"] += 1
 
         try:
+            logger.info("[VOICE CM] → _generate_response call_id=%s", call_id)
             response = await self._generate_response(ctx, user_message)
+            logger.info("[VOICE CM] ← _generate_response 完成 text='%s'", response.get("text", "")[:80])
             ctx.state = ConversationState.IDLE
             return {"type": "response", "call_id": call_id, **response}
         except Exception as exc:
-            logger.error("process_text_message error: %s", exc)
+            logger.error("[VOICE CM] process_text_message error: %s", exc)
             ctx.state = ConversationState.ERROR
             ctx.stats["errors"] += 1
             return {"type": "error", "call_id": call_id, "message": str(exc)}
@@ -230,13 +236,18 @@ class ConversationManager:
         new_state = state_agent.analyze_state(user_input, current_state, world)
         mc.update_character_state(char_id, new_state)
 
-        # ⑧ DeepSeek 生成
-        resp = self.client.chat.completions.create(
-            model="deepseek-chat",
-            messages=messages,
-            temperature=0.9,
+        # ⑧ DeepSeek 生成（带重试）
+        logger.info("[VOICE CM] → DeepSeek API 调用 (messages=%d 条)", len(messages))
+        resp = await retry_async(
+            lambda: self.client.chat.completions.create(
+                model="deepseek-chat",
+                messages=messages,
+                temperature=0.9,
+            ),
+            max_retries=3,
         )
         ai_reply = resp.choices[0].message.content.strip()
+        logger.info("[VOICE CM] ← DeepSeek 返回: '%s'", ai_reply[:100])
 
         # 保存本轮对话到消息历史（维持多轮上下文）
         ctx.message_history.append({"role": "assistant", "content": ai_reply})
@@ -263,6 +274,15 @@ class ConversationManager:
             mc.add_chat_summary(char_id, f"AI: {ai_reply}")
             mc.update_last_chat_time(char_id)
             mc.save_memory(char_id, memory_data)
+            # 追加本轮对话到主聊天历史（不覆盖已有记录）
+            try:
+                existing = memory.load_memory(char_id)
+                existing.append({"role": "user", "content": user_input})
+                existing.append({"role": "assistant", "content": ai_reply})
+                memory.save_memory(char_id, existing)
+            except Exception:
+                # 回退：直接保存 voice session 历史
+                memory.save_memory(char_id, ctx.message_history)
         except Exception as save_err:
             logger.warning("保存状态失败（非关键）: %s", save_err)
 
